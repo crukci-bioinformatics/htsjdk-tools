@@ -186,7 +186,7 @@ public class PileupCounts extends CommandLineProgram {
 
     /**
      * Write the header for the coverage/pileup output table.
-     * 
+     *
      * @param writer
      * @throws IOException
      */

@@ -87,7 +87,7 @@ public abstract class CommandLineProgram {
     /**
      * Workaround to allow for a help message to be displayed to stdout without
      * error or warning messages about missing arguments.
-     * 
+     *
      * @param args
      * @param options
      */
@@ -136,7 +136,7 @@ public abstract class CommandLineProgram {
 
     /**
      * Prints version information and exits.
-     * 
+     *
      * @param stream
      */
     private void printVersionInformation(PrintStream stream) {
