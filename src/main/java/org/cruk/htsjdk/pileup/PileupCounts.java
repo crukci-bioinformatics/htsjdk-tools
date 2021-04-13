@@ -50,7 +50,7 @@ public class PileupCounts extends CommandLineProgram {
 
     private String id;
     private File bamFile;
-    private File ampliconsFile;
+    private File intervalsFile;
     private File referenceSequenceFile;
     private File pileupCountsFile;
     private int minimumBaseQuality = 0;
@@ -116,7 +116,7 @@ public class PileupCounts extends CommandLineProgram {
     protected void extractOptionValues(CommandLine commandLine) throws ParseException {
         id = commandLine.getOptionValue("id");
         bamFile = (File) commandLine.getParsedOptionValue("input");
-        ampliconsFile = (File) commandLine.getParsedOptionValue("intervals");
+        intervalsFile = (File) commandLine.getParsedOptionValue("intervals");
         referenceSequenceFile = (File) commandLine.getParsedOptionValue("reference-sequence");
         pileupCountsFile = (File) commandLine.getParsedOptionValue("output");
     }
@@ -130,7 +130,7 @@ public class PileupCounts extends CommandLineProgram {
         ProgressLogger progress = new ProgressLogger(logger, 100, "loci");
 
         IOUtil.assertFileIsReadable(bamFile);
-        IOUtil.assertFileIsReadable(ampliconsFile);
+        IOUtil.assertFileIsReadable(intervalsFile);
         IOUtil.assertFileIsReadable(referenceSequenceFile);
         IOUtil.assertFileIsWritable(pileupCountsFile);
 
@@ -140,9 +140,9 @@ public class PileupCounts extends CommandLineProgram {
         ReferenceSequenceFileWalker referenceSequenceFileWalker = new ReferenceSequenceFileWalker(
                 referenceSequenceFile);
 
-        List<Interval> amplicons = IntervalUtils.readIntervalFile(ampliconsFile);
+        List<Interval> intervals = IntervalUtils.readIntervalFile(intervalsFile);
         IntervalList intervalList = new IntervalList(referenceSequenceFileWalker.getSequenceDictionary());
-        intervalList.addall(amplicons);
+        intervalList.addall(intervals);
 
         SamLocusIterator locusIterator = new SamLocusIterator(reader, intervalList);
 
