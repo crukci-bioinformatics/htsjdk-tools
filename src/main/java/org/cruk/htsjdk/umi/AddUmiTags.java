@@ -87,7 +87,8 @@ public class AddUmiTags extends CommandLineProgram {
         option.setType(Number.class);
         options.addOption(option);
 
-        option = new Option("t", "umi-tag", true, "The tag to use for the UMI or barcode in the output BAM file (required)");
+        option = new Option("t", "umi-tag", true,
+                "The tag to use for the UMI or barcode in the output BAM file (required)");
         option.setRequired(true);
         options.addOption(option);
 
@@ -103,9 +104,9 @@ public class AddUmiTags extends CommandLineProgram {
     }
 
     /**
-     * Main run method for iterating over records in a BAM file and adding a tag
-     * for the unique molecular index (UMI) tag found in the first specified
-     * number of bases.
+     * Main run method for iterating over records in a BAM file and adding a tag for
+     * the unique molecular index (UMI) tag found in the first specified number of
+     * bases.
      */
     private void run() {
         ProgressLogger progress = new ProgressLogger(logger, 100000);
@@ -117,7 +118,7 @@ public class AddUmiTags extends CommandLineProgram {
                 .open(inputBamFile);
 
         SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(true)
-                .makeSAMOrBAMWriter(reader.getFileHeader(), false, outputBamFile);
+                .makeSAMOrBAMWriter(reader.getFileHeader(), true, outputBamFile);
 
         SAMRecordIterator iterator = reader.iterator();
 
