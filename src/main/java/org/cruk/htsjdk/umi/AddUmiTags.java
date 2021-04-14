@@ -99,8 +99,8 @@ public class AddUmiTags extends CommandLineProgram {
     protected void extractOptionValues(CommandLine commandLine) throws ParseException {
         inputBamFile = (File) commandLine.getParsedOptionValue("input");
         outputBamFile = (File) commandLine.getParsedOptionValue("output");
-        outputBamFile = (File) commandLine.getParsedOptionValue("output");
-        umiLength = (Integer) commandLine.getParsedOptionValue("umi-length");
+        umiLength = ((Number) commandLine.getParsedOptionValue("umi-length")).intValue();
+        umiTag = commandLine.getOptionValue("umi-tag");
     }
 
     /**
