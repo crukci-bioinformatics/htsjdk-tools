@@ -102,6 +102,10 @@
                             <mainClass>org.cruk.htsjdk.pileup.PileupCounts</mainClass>
                             <id>pileup-counts</id>
                         </program>
+                        <program>
+                            <mainClass>org.cruk.htsjdk.umi.AddUmiTags</mainClass>
+                            <id>add-umi-tags</id>
+                        </program>
                     </programs>
                 </configuration>
             </plugin>
