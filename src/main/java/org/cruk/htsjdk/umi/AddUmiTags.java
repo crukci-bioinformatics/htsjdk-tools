@@ -64,7 +64,7 @@ public class AddUmiTags extends CommandLineProgram {
 
     @Override
     protected String getHelpDescription() {
-        return "Generates a pileup summary with read counts for each position and allele";
+        return "Adds SAM tags for UMI sequences found in the specified number of bases at the beginning of each read.";
     }
 
     @Override
