@@ -109,7 +109,7 @@ public class AddUmiTags extends CommandLineProgram {
      * bases.
      */
     private void run() {
-        ProgressLogger progress = new ProgressLogger(logger, 100000);
+        ProgressLogger progress = new ProgressLogger(logger, 1000000);
 
         IOUtil.assertFileIsReadable(inputBamFile);
         IOUtil.assertFileIsWritable(outputBamFile);
