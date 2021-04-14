@@ -82,12 +82,12 @@ public class AddUmiTags extends CommandLineProgram {
         options.addOption(option);
 
         option = new Option("l", "umi-length", true,
-                "The number of bases at the beginning of the read that consitute the UMI or barcode.");
+                "The number of bases at the beginning of the read that consitute the UMI or barcode (required)");
         option.setRequired(true);
         option.setType(Number.class);
         options.addOption(option);
 
-        option = new Option("t", "umi-tag", true, "The tag to use for the UMI or barcode in the output BAM file.");
+        option = new Option("t", "umi-tag", true, "The tag to use for the UMI or barcode in the output BAM file (required)");
         option.setRequired(true);
         options.addOption(option);
 
