@@ -145,5 +145,7 @@ public class AddUmiTags extends CommandLineProgram {
         writer.close();
 
         CloserUtil.close(reader);
+
+        logger.info("Finished");
     }
 }
