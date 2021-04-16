@@ -54,7 +54,7 @@ public class AddUmiTags extends CommandLineProgram {
     private File inputBamFile;
     private File outputBamFile;
     private int umiLength;
-    private String umiTag;
+    private String umiTag = "RX";
 
     public static void main(String[] args) {
         AddUmiTags addUmiTags = new AddUmiTags();
@@ -88,8 +88,7 @@ public class AddUmiTags extends CommandLineProgram {
         options.addOption(option);
 
         option = new Option("t", "umi-tag", true,
-                "The tag to use for the UMI or barcode in the output BAM file (required)");
-        option.setRequired(true);
+                "The tag to use for the UMI or barcode in the output BAM file (default: " + umiTag + ")");
         options.addOption(option);
 
         return options;
@@ -100,7 +99,9 @@ public class AddUmiTags extends CommandLineProgram {
         inputBamFile = (File) commandLine.getParsedOptionValue("input");
         outputBamFile = (File) commandLine.getParsedOptionValue("output");
         umiLength = ((Number) commandLine.getParsedOptionValue("umi-length")).intValue();
-        umiTag = commandLine.getOptionValue("umi-tag");
+        if (commandLine.hasOption("umi-tag")) {
+            umiTag = commandLine.getOptionValue("umi-tag");
+        }
     }
 
     /**
