@@ -34,6 +34,17 @@ public abstract class CommandLineProgram {
     protected abstract String getHelpDescription();
 
     /**
+     * @return the package name and version.
+     */
+    protected String getPackageNameAndVersion() {
+        StringBuilder sb = new StringBuilder();
+        sb.append(getClass().getPackage().getImplementationTitle());
+        sb.append(" ");
+        sb.append(getClass().getPackage().getImplementationVersion());
+        return sb.toString();
+    }
+
+    /**
      * Configure command line options.
      *
      * @return an Options object
@@ -72,9 +83,7 @@ public abstract class CommandLineProgram {
         try {
             CommandLineParser parser = new DefaultParser();
             CommandLine commandLine = parser.parse(options, args);
-
             extractOptionValues(commandLine);
-
         } catch (ParseException e) {
             System.err.println("Error parsing command-line arguments");
             System.err.println();
@@ -141,9 +150,7 @@ public abstract class CommandLineProgram {
      */
     private void printVersionInformation(PrintStream stream) {
         PrintWriter out = new PrintWriter(new OutputStreamWriter(stream));
-        out.print(getClass().getPackage().getImplementationTitle());
-        out.print(" ");
-        out.print(getClass().getPackage().getImplementationVersion());
+        out.print(getPackageNameAndVersion());
         out.print(" - ");
         out.print(getClass().getName());
         out.println();
