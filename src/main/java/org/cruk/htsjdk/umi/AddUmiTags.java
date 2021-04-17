@@ -10,10 +10,6 @@ package org.cruk.htsjdk.umi;
 
 import java.io.File;
 
-import org.apache.commons.cli.CommandLine;
-import org.apache.commons.cli.Option;
-import org.apache.commons.cli.Options;
-import org.apache.commons.cli.ParseException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cruk.htsjdk.CommandLineProgram;
@@ -29,6 +25,9 @@ import htsjdk.samtools.ValidationStringency;
 import htsjdk.samtools.util.CloserUtil;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.SequenceUtil;
+import picocli.CommandLine;
+import picocli.CommandLine.Command;
+import picocli.CommandLine.Option;
 
 /**
  * Command line tool for adding unique molecular identifier (UMI) tags to
@@ -48,60 +47,27 @@ import htsjdk.samtools.util.SequenceUtil;
  *
  * @author eldrid01
  */
+@Command(name = "add-umi-tags", versionProvider = AddUmiTags.class, description = "\nAdds SAM tags for UMI sequences found in the specified number of bases at the beginning of each read.\n", mixinStandardHelpOptions = true)
 public class AddUmiTags extends CommandLineProgram {
     private static final Logger logger = LogManager.getLogger();
 
+    @Option(names = { "-i", "--input" }, required = true, description = "Input BAM file (required).")
     private File inputBamFile;
+
+    @Option(names = { "-o", "--output" }, required = true, description = "Output BAM file (required).")
     private File outputBamFile;
+
+    @Option(names = { "-l",
+            "--umi-length" }, required = true, description = "The number of bases at the beginning of the read that consitute the UMI or barcode (required).")
     private int umiLength;
+
+    @Option(names = { "-t",
+            "--umi-tag" }, description = "The tag to use for the UMI or barcode in the output BAM file (default: ${DEFAULT-VALUE}).")
     private String umiTag = "RX";
 
     public static void main(String[] args) {
-        AddUmiTags addUmiTags = new AddUmiTags();
-        addUmiTags.parseCommandLineArgs(args);
-        addUmiTags.run();
-    }
-
-    @Override
-    protected String getHelpDescription() {
-        return "Adds SAM tags for UMI sequences found in the specified number of bases at the beginning of each read.";
-    }
-
-    @Override
-    protected Options createOptions() {
-        Options options = super.createOptions();
-
-        Option option = new Option("i", "input", true, "Input BAM file (required)");
-        option.setRequired(true);
-        option.setType(File.class);
-        options.addOption(option);
-
-        option = new Option("o", "output", true, "Output BAM file (required)");
-        option.setRequired(true);
-        option.setType(File.class);
-        options.addOption(option);
-
-        option = new Option("l", "umi-length", true,
-                "The number of bases at the beginning of the read that consitute the UMI or barcode (required)");
-        option.setRequired(true);
-        option.setType(Number.class);
-        options.addOption(option);
-
-        option = new Option("t", "umi-tag", true,
-                "The tag to use for the UMI or barcode in the output BAM file (default: " + umiTag + ")");
-        options.addOption(option);
-
-        return options;
-    }
-
-    @Override
-    protected void extractOptionValues(CommandLine commandLine) throws ParseException {
-        inputBamFile = (File) commandLine.getParsedOptionValue("input");
-        outputBamFile = (File) commandLine.getParsedOptionValue("output");
-        umiLength = ((Number) commandLine.getParsedOptionValue("umi-length")).intValue();
-        if (commandLine.hasOption("umi-tag")) {
-            umiTag = commandLine.getOptionValue("umi-tag");
-        }
+        int exitCode = new CommandLine(new AddUmiTags()).execute(args);
+        System.exit(exitCode);
     }
 
     /**
@@ -109,7 +75,10 @@ public class AddUmiTags extends CommandLineProgram {
      * the unique molecular index (UMI) tag found in the first specified number of
      * bases.
      */
-    private void run() {
+    @Override
+    public void run() {
+        logger.info(getClass().getName() + " (" + getPackageNameAndVersion() + ")");
+
         ProgressLogger progress = new ProgressLogger(logger, 1000000);
 
         IOUtil.assertFileIsReadable(inputBamFile);
