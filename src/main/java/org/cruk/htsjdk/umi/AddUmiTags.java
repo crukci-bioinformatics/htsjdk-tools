@@ -15,6 +15,7 @@ import org.apache.logging.log4j.Logger;
 import org.cruk.htsjdk.CommandLineProgram;
 import org.cruk.htsjdk.ProgressLogger;
 
+import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMFileWriter;
 import htsjdk.samtools.SAMFileWriterFactory;
 import htsjdk.samtools.SAMRecord;
@@ -87,8 +88,10 @@ public class AddUmiTags extends CommandLineProgram {
         SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
                 .open(inputBamFile);
 
-        SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(true)
-                .makeSAMOrBAMWriter(reader.getFileHeader(), true, outputBamFile);
+        boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
+
+        SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(sorted)
+                .makeSAMOrBAMWriter(reader.getFileHeader(), sorted, outputBamFile);
 
         SAMRecordIterator iterator = reader.iterator();
 
