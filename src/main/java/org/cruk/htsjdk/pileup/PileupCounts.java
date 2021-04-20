@@ -26,14 +26,15 @@ import htsjdk.samtools.SamReaderFactory;
 import htsjdk.samtools.ValidationStringency;
 import htsjdk.samtools.filter.DuplicateReadFilter;
 import htsjdk.samtools.filter.SecondaryAlignmentFilter;
-import htsjdk.samtools.reference.ReferenceSequenceFileWalker;
-import htsjdk.samtools.reference.SamLocusAndReferenceIterator;
+import htsjdk.samtools.reference.ReferenceSequenceFile;
+import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.Interval;
 import htsjdk.samtools.util.IntervalList;
 import htsjdk.samtools.util.SamLocusIterator;
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo;
 import htsjdk.samtools.util.SamLocusIterator.RecordAndOffset;
+import htsjdk.samtools.util.SequenceUtil;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -60,7 +61,7 @@ public class PileupCounts extends CommandLineProgram {
     private File intervalsFile;
 
     @Option(names = { "-r",
-            "--reference-sequence" }, required = true, description = "Reference sequence FASTA file which must be indexed and have an accompanying dictionary (required).")
+            "--reference-sequence" }, description = "Reference sequence FASTA file which must be indexed and have an accompanying dictionary (optional).")
     private File referenceSequenceFile;
 
     @Option(names = { "-o",
@@ -75,8 +76,11 @@ public class PileupCounts extends CommandLineProgram {
             "--minimum-mapping-quality" }, description = "Minimum mapping quality for reads to be included (default: ${DEFAULT-VALUE}).")
     private int minimumMappingQuality = 1;
 
-    @Option(names = "--output-N-counts", description = "Output counts for the number of N base calls")
+    @Option(names = "--output-N-counts", description = "Output counts for the number of N base calls.")
     private boolean outputNCounts = false;
+
+    @Option(names = "--validation-stringency", description = "Validation stringency applied to the BAM file (default: ${DEFAULT-VALUE}).")
+    private ValidationStringency validationStringency = ValidationStringency.LENIENT;
 
     public static void main(String[] args) {
         int exitCode = new CommandLine(new PileupCounts()).execute(args);
@@ -95,28 +99,43 @@ public class PileupCounts extends CommandLineProgram {
 
         IOUtil.assertFileIsReadable(bamFile);
         IOUtil.assertFileIsReadable(intervalsFile);
-        IOUtil.assertFileIsReadable(referenceSequenceFile);
         IOUtil.assertFileIsWritable(pileupCountsFile);
 
-        SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
-                .open(bamFile);
+        SamReader reader = SamReaderFactory.makeDefault().validationStringency(validationStringency).open(bamFile);
         if (!reader.hasIndex()) {
             logger.error("No index found for input BAM file");
             return 1;
         }
 
-        ReferenceSequenceFileWalker referenceSequenceFileWalker = new ReferenceSequenceFileWalker(
-                referenceSequenceFile);
+        ReferenceSequenceFile referenceFile = null;
+        if (referenceSequenceFile != null) {
+            IOUtil.assertFileIsReadable(referenceSequenceFile);
 
-        SAMSequenceDictionary sequenceDictionary = referenceSequenceFileWalker.getSequenceDictionary();
-        if (sequenceDictionary == null) {
-            logger.error("Sequence dictionary (.dict file) not found for reference sequence FASTA file");
-            referenceSequenceFileWalker.close();
-            return 1;
+            referenceFile = ReferenceSequenceFileFactory.getReferenceSequenceFile(referenceSequenceFile);
+
+            if (!referenceFile.isIndexed()) {
+                logger.error("Reference sequence FASTA file is not indexed");
+                return 1;
+            }
+
+            // check sequence dictionary is consistent with the BAM file
+            SAMSequenceDictionary dictionary = referenceFile.getSequenceDictionary();
+            if (dictionary != null) {
+                logger.info("Sequence dictionary found");
+                if (!SequenceUtil.areSequenceDictionariesEqual(dictionary,
+                        reader.getFileHeader().getSequenceDictionary())) {
+                    if (validationStringency == ValidationStringency.LENIENT) {
+                        logger.warn("Reference sequence dictionary not consistent with BAM file");
+                    } else if (validationStringency == ValidationStringency.STRICT) {
+                        logger.error("Reference sequence dictionary not consistent with BAM file");
+                        return 1;
+                    }
+                }
+            }
         }
 
         List<Interval> intervals = IntervalUtils.readIntervalFile(intervalsFile);
-        IntervalList intervalList = new IntervalList(sequenceDictionary);
+        IntervalList intervalList = new IntervalList(reader.getFileHeader());
         intervalList.addall(intervals);
 
         SamLocusIterator locusIterator = new SamLocusIterator(reader, intervalList);
@@ -127,34 +146,39 @@ public class PileupCounts extends CommandLineProgram {
         // exclude secondary alignments and reads marked as duplicates
         locusIterator.setSamFilters(Arrays.asList(new SecondaryAlignmentFilter(), new DuplicateReadFilter()));
 
-        SamLocusAndReferenceIterator locusAndReferenceIterator = new SamLocusAndReferenceIterator(
-                referenceSequenceFileWalker, locusIterator);
-
         BufferedWriter writer = IOUtil.openFileForBufferedWriting(pileupCountsFile);
 
         writeHeader(writer);
 
-        for (SamLocusAndReferenceIterator.SAMLocusAndReference locusAndReference : locusAndReferenceIterator) {
+        while (locusIterator.hasNext()) {
+            LocusInfo locusInfo = locusIterator.next();
 
-            List<RecordAndOffset> pileup = locusAndReference.getRecordAndOffsets();
+            String referenceBase = null;
+            if (referenceFile != null) {
+                referenceBase = referenceFile
+                        .getSubsequenceAt(locusInfo.getContig(), locusInfo.getPosition(), locusInfo.getPosition())
+                        .getBaseString();
+            }
+
+            List<RecordAndOffset> pileup = locusInfo.getRecordAndOffsets();
 
             List<RecordAndOffset> filteredPileup = PileupUtils.filterLowQualityScores(pileup, minimumBaseQuality,
                     minimumMappingQuality);
 
             filteredPileup = PileupUtils.filterOverlappingFragments(filteredPileup);
 
-            writePileupCounts(writer, locusAndReference, filteredPileup);
+            writePileupCounts(writer, locusInfo, referenceBase, filteredPileup);
 
-            LocusInfo locusInfo = locusAndReference.getLocus();
             progress.record(locusInfo.getContig(), locusInfo.getPosition());
         }
 
         writer.close();
 
-        locusAndReferenceIterator.close();
         locusIterator.close();
         reader.close();
-        referenceSequenceFileWalker.close();
+        if (referenceFile != null) {
+            referenceFile.close();
+        }
 
         logger.info("Finished");
         return 0;
@@ -174,8 +198,10 @@ public class PileupCounts extends CommandLineProgram {
         writer.write("Chromosome");
         writer.write("\t");
         writer.write("Position");
-        writer.write("\t");
-        writer.write("Reference base");
+        if (referenceSequenceFile != null) {
+            writer.write("\t");
+            writer.write("Reference base");
+        }
         writer.write("\t");
         writer.write("Depth unfiltered");
         writer.write("\t");
@@ -195,25 +221,25 @@ public class PileupCounts extends CommandLineProgram {
         writer.write("\n");
     }
 
-    private void writePileupCounts(BufferedWriter writer,
-            SamLocusAndReferenceIterator.SAMLocusAndReference locusAndReference, List<RecordAndOffset> filteredPileup)
-            throws IOException {
+    private void writePileupCounts(BufferedWriter writer, LocusInfo locusInfo, String referenceBase,
+            List<RecordAndOffset> filteredPileup) throws IOException {
 
         if (id != null) {
             writer.write(id);
             writer.write("\t");
         }
 
-        LocusInfo locusInfo = locusAndReference.getLocus();
-
         writer.write(locusInfo.getContig());
         writer.write("\t");
         writer.write(Integer.toString(locusInfo.getPosition()));
-        writer.write("\t");
-        writer.write(locusAndReference.getReferenceBase());
+
+        if (referenceSequenceFile != null) {
+            writer.write("\t");
+            writer.write(referenceBase);
+        }
 
         writer.write("\t");
-        writer.write(Integer.toString(locusAndReference.getRecordAndOffsets().size()));
+        writer.write(Integer.toString(locusInfo.size()));
 
         writer.write("\t");
         writer.write(Integer.toString(filteredPileup.size()));
