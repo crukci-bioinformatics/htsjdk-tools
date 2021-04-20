@@ -65,6 +65,9 @@ public class AddUmiTags extends CommandLineProgram {
             "--umi-tag" }, description = "The tag to use for the UMI or barcode in the output BAM file (default: ${DEFAULT-VALUE}).")
     private String umiTag = "RX";
 
+    @Option(names = "--validation-stringency", description = "Validation stringency applied to the BAM file (default: ${DEFAULT-VALUE}).")
+    private ValidationStringency validationStringency = ValidationStringency.LENIENT;
+
     public static void main(String[] args) {
         int exitCode = new CommandLine(new AddUmiTags()).execute(args);
         System.exit(exitCode);
@@ -84,8 +87,7 @@ public class AddUmiTags extends CommandLineProgram {
         IOUtil.assertFileIsReadable(inputBamFile);
         IOUtil.assertFileIsWritable(outputBamFile);
 
-        SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
-                .open(inputBamFile);
+        SamReader reader = SamReaderFactory.makeDefault().validationStringency(validationStringency).open(inputBamFile);
 
         boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
 
