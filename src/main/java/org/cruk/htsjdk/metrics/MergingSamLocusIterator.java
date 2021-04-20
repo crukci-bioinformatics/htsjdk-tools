@@ -33,7 +33,10 @@ import htsjdk.samtools.util.SamLocusIterator.RecordAndOffset;
 
 /**
  * Merging SAM locus iterator that combines LocusInfo data from multiple input
- * BAM files.
+ * BAM files so that a single combined LocusInfo object is returned for each
+ * locus.
+ *
+ * @author eldrid01
  */
 public class MergingSamLocusIterator implements CloseableIterator<LocusInfo> {
 
