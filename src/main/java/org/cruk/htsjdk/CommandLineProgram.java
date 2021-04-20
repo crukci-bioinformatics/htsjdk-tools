@@ -13,6 +13,8 @@ import picocli.CommandLine.IVersionProvider;
 /**
  * Abstract base class for command line programs with functions obtaining
  * package and version information.
+ *
+ * @author eldrid01
  */
 public abstract class CommandLineProgram implements Runnable, IVersionProvider {
 
