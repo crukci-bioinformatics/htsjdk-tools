@@ -121,7 +121,6 @@ public class PileupCounts extends CommandLineProgram {
             // check sequence dictionary is consistent with the BAM file
             SAMSequenceDictionary dictionary = referenceFile.getSequenceDictionary();
             if (dictionary != null) {
-                logger.info("Sequence dictionary found");
                 if (!SequenceUtil.areSequenceDictionariesEqual(dictionary,
                         reader.getFileHeader().getSequenceDictionary())) {
                     if (validationStringency == ValidationStringency.LENIENT) {
