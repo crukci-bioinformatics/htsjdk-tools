@@ -23,7 +23,6 @@ import htsjdk.samtools.SAMRecordIterator;
 import htsjdk.samtools.SamReader;
 import htsjdk.samtools.SamReaderFactory;
 import htsjdk.samtools.ValidationStringency;
-import htsjdk.samtools.util.CloserUtil;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.SequenceUtil;
 import picocli.CommandLine;
@@ -115,8 +114,8 @@ public class AddUmiTags extends CommandLineProgram {
         logger.info("Writing " + outputBamFile.getName());
         writer.close();
 
-        CloserUtil.close(iterator);
-        CloserUtil.close(reader);
+        iterator.close();
+        reader.close();
 
         logger.info("Finished");
         return 0;
