@@ -59,7 +59,7 @@ public class IntervalUtils {
     public static List<Interval> readIntervalListFile(File intervalListFile) {
         IntervalList intervalList = IntervalList.fromFile(intervalListFile);
         // note that an unmodifiable list is returned by intervalList.getIntervals()
-        List<Interval> intervals = new ArrayList<Interval>();
+        List<Interval> intervals = new ArrayList<>();
         intervals.addAll(intervalList.getIntervals());
         return intervals;
 
@@ -76,7 +76,7 @@ public class IntervalUtils {
                 new BEDCodec(), false);
         try {
             CloseableTribbleIterator<BEDFeature> iterator = reader.iterator();
-            List<Interval> intervals = new ArrayList<Interval>();
+            List<Interval> intervals = new ArrayList<>();
             while (iterator.hasNext()) {
                 BEDFeature feature = iterator.next();
                 Interval interval = new Interval(feature.getContig(), feature.getStart(), feature.getEnd(),

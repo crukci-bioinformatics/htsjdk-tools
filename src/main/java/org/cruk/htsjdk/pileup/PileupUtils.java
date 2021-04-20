@@ -72,7 +72,7 @@ public class PileupUtils {
      */
     public static List<RecordAndOffset> filterLowQualityScores(List<RecordAndOffset> pileup, int minimumBaseQuality,
             int minimumMappingQuality) {
-        List<RecordAndOffset> filteredPileup = new ArrayList<RecordAndOffset>();
+        List<RecordAndOffset> filteredPileup = new ArrayList<>();
         for (RecordAndOffset recordAndOffset : pileup) {
             SAMRecord record = recordAndOffset.getRecord();
             if (recordAndOffset.getBaseQuality() >= minimumBaseQuality
@@ -97,8 +97,8 @@ public class PileupUtils {
      */
     public static List<RecordAndOffset> filterOverlappingFragments(List<RecordAndOffset> pileup) {
 
-        Map<String, RecordAndOffset> retained = new HashMap<String, RecordAndOffset>();
-        Set<String> excluded = new HashSet<String>();
+        Map<String, RecordAndOffset> retained = new HashMap<>();
+        Set<String> excluded = new HashSet<>();
 
         for (RecordAndOffset recordAndOffset : pileup) {
 
@@ -128,6 +128,6 @@ public class PileupUtils {
             }
         }
 
-        return new ArrayList<RecordAndOffset>(retained.values());
+        return new ArrayList<>(retained.values());
     }
 }
