@@ -85,44 +85,38 @@ public class AddUmiTags extends CommandLineProgram {
         IOUtil.assertFileIsReadable(inputBamFile);
         IOUtil.assertFileIsWritable(outputBamFile);
 
-        SamReader reader = null;
-        SAMRecordIterator iterator = null;
+        SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
+                .open(inputBamFile);
 
-        try {
-            reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
-                    .open(inputBamFile);
+        boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
 
-            boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
+        SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(sorted)
+                .makeSAMOrBAMWriter(reader.getFileHeader(), sorted, outputBamFile);
 
-            SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(sorted)
-                    .makeSAMOrBAMWriter(reader.getFileHeader(), sorted, outputBamFile);
+        SAMRecordIterator iterator = reader.iterator();
 
-            iterator = reader.iterator();
+        while (iterator.hasNext()) {
+            SAMRecord record = iterator.next();
 
-            while (iterator.hasNext()) {
-                SAMRecord record = iterator.next();
-
-                if (!record.isSecondaryOrSupplementary()) {
-                    String sequence = record.getReadString();
-                    if (record.getReadNegativeStrandFlag()) {
-                        sequence = SequenceUtil.reverseComplement(sequence);
-                    }
-                    String umi = sequence.substring(0, umiLength);
-                    record.setAttribute(umiTag, umi);
+            if (!record.isSecondaryOrSupplementary()) {
+                String sequence = record.getReadString();
+                if (record.getReadNegativeStrandFlag()) {
+                    sequence = SequenceUtil.reverseComplement(sequence);
                 }
-
-                writer.addAlignment(record);
-
-                progress.record(record);
+                String umi = sequence.substring(0, umiLength);
+                record.setAttribute(umiTag, umi);
             }
 
-            logger.info("Writing " + outputBamFile.getName());
-            writer.close();
+            writer.addAlignment(record);
 
-        } finally {
-            CloserUtil.close(iterator);
-            CloserUtil.close(reader);
+            progress.record(record);
         }
+
+        logger.info("Writing " + outputBamFile.getName());
+        writer.close();
+
+        CloserUtil.close(iterator);
+        CloserUtil.close(reader);
 
         logger.info("Finished");
         return 0;
