@@ -77,7 +77,7 @@ public class AddUmiTags extends CommandLineProgram {
      * bases.
      */
     @Override
-    public void run() {
+    public Integer call() throws Exception {
         logger.info(getClass().getName() + " (" + getPackageNameAndVersion() + ")");
 
         ProgressLogger progress = new ProgressLogger(logger, 1000000);
@@ -85,40 +85,46 @@ public class AddUmiTags extends CommandLineProgram {
         IOUtil.assertFileIsReadable(inputBamFile);
         IOUtil.assertFileIsWritable(outputBamFile);
 
-        SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
-                .open(inputBamFile);
+        SamReader reader = null;
+        SAMRecordIterator iterator = null;
 
-        boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
+        try {
+            reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
+                    .open(inputBamFile);
 
-        SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(sorted)
-                .makeSAMOrBAMWriter(reader.getFileHeader(), sorted, outputBamFile);
+            boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
 
-        SAMRecordIterator iterator = reader.iterator();
+            SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(sorted)
+                    .makeSAMOrBAMWriter(reader.getFileHeader(), sorted, outputBamFile);
 
-        while (iterator.hasNext()) {
-            SAMRecord record = iterator.next();
+            iterator = reader.iterator();
 
-            if (!record.isSecondaryOrSupplementary()) {
-                String sequence = record.getReadString();
-                if (record.getReadNegativeStrandFlag()) {
-                    sequence = SequenceUtil.reverseComplement(sequence);
+            while (iterator.hasNext()) {
+                SAMRecord record = iterator.next();
+
+                if (!record.isSecondaryOrSupplementary()) {
+                    String sequence = record.getReadString();
+                    if (record.getReadNegativeStrandFlag()) {
+                        sequence = SequenceUtil.reverseComplement(sequence);
+                    }
+                    String umi = sequence.substring(0, umiLength);
+                    record.setAttribute(umiTag, umi);
                 }
-                String umi = sequence.substring(0, umiLength);
-                record.setAttribute(umiTag, umi);
+
+                writer.addAlignment(record);
+
+                progress.record(record);
             }
 
-            writer.addAlignment(record);
+            logger.info("Writing " + outputBamFile.getName());
+            writer.close();
 
-            progress.record(record);
+        } finally {
+            CloserUtil.close(iterator);
+            CloserUtil.close(reader);
         }
 
-        iterator.close();
-
-        logger.info("Writing " + outputBamFile.getName());
-        writer.close();
-
-        CloserUtil.close(reader);
-
         logger.info("Finished");
+        return 0;
     }
 }

@@ -8,6 +8,8 @@
 
 package org.cruk.htsjdk;
 
+import java.util.concurrent.Callable;
+
 import picocli.CommandLine.IVersionProvider;
 
 /**
@@ -16,7 +18,7 @@ import picocli.CommandLine.IVersionProvider;
  *
  * @author eldrid01
  */
-public abstract class CommandLineProgram implements Runnable, IVersionProvider {
+public abstract class CommandLineProgram implements Callable<Integer>, IVersionProvider {
 
     /**
      * @return the package name and version

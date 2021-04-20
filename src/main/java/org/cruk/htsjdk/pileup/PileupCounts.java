@@ -28,6 +28,7 @@ import htsjdk.samtools.filter.DuplicateReadFilter;
 import htsjdk.samtools.filter.SecondaryAlignmentFilter;
 import htsjdk.samtools.reference.ReferenceSequenceFileWalker;
 import htsjdk.samtools.reference.SamLocusAndReferenceIterator;
+import htsjdk.samtools.util.CloserUtil;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.Interval;
 import htsjdk.samtools.util.IntervalList;
@@ -81,11 +82,11 @@ public class PileupCounts extends CommandLineProgram {
     }
 
     /**
-     * Main run method for iterating over loci within the given intervals and
+     * Main work method for iterating over loci within the given intervals and
      * tabulating read counts for each base.
      */
     @Override
-    public void run() {
+    public Integer call() throws Exception {
         logger.info(getClass().getName() + " (" + getPackageNameAndVersion() + ")");
 
         ProgressLogger progress = new ProgressLogger(logger, 100, "loci");
@@ -95,36 +96,43 @@ public class PileupCounts extends CommandLineProgram {
         IOUtil.assertFileIsReadable(referenceSequenceFile);
         IOUtil.assertFileIsWritable(pileupCountsFile);
 
-        SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
-                .open(bamFile);
-
-        ReferenceSequenceFileWalker referenceSequenceFileWalker = new ReferenceSequenceFileWalker(
-                referenceSequenceFile);
-
-        SAMSequenceDictionary sequenceDictionary = referenceSequenceFileWalker.getSequenceDictionary();
-        if (sequenceDictionary == null) {
-            logger.error("Sequence dictionary for reference sequence is missing");
-            System.exit(1);
-        }
-
-        List<Interval> intervals = IntervalUtils.readIntervalFile(intervalsFile);
-        IntervalList intervalList = new IntervalList(sequenceDictionary);
-        intervalList.addall(intervals);
-
-        SamLocusIterator locusIterator = new SamLocusIterator(reader, intervalList);
-
-        // exclude reads that are marked as failing platform/vendor quality checks
-        locusIterator.setIncludeNonPfReads(false);
-
-        // exclude secondary alignments and reads marked as duplicates
-        locusIterator.setSamFilters(Arrays.asList(new SecondaryAlignmentFilter(), new DuplicateReadFilter()));
-
-        SamLocusAndReferenceIterator locusAndReferenceIterator = new SamLocusAndReferenceIterator(
-                referenceSequenceFileWalker, locusIterator);
-
-        BufferedWriter writer = IOUtil.openFileForBufferedWriting(pileupCountsFile);
+        SamReader reader = null;
+        ReferenceSequenceFileWalker referenceSequenceFileWalker = null;
+        SamLocusIterator locusIterator = null;
+        SamLocusAndReferenceIterator locusAndReferenceIterator = null;
 
         try {
+            reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT).open(bamFile);
+            if (!reader.hasIndex()) {
+                logger.error("No index found for input BAM file");
+                return 1;
+            }
+
+            referenceSequenceFileWalker = new ReferenceSequenceFileWalker(referenceSequenceFile);
+
+            SAMSequenceDictionary sequenceDictionary = referenceSequenceFileWalker.getSequenceDictionary();
+            if (sequenceDictionary == null) {
+                logger.error("Sequence dictionary (.dict file) not found for reference sequence FASTA file");
+                return 1;
+            }
+
+            List<Interval> intervals = IntervalUtils.readIntervalFile(intervalsFile);
+            IntervalList intervalList = new IntervalList(sequenceDictionary);
+            intervalList.addall(intervals);
+
+            locusIterator = new SamLocusIterator(reader, intervalList);
+
+            // exclude reads that are marked as failing platform/vendor quality checks
+            locusIterator.setIncludeNonPfReads(false);
+
+            // exclude secondary alignments and reads marked as duplicates
+            locusIterator.setSamFilters(Arrays.asList(new SecondaryAlignmentFilter(), new DuplicateReadFilter()));
+
+            locusAndReferenceIterator = new SamLocusAndReferenceIterator(referenceSequenceFileWalker, locusIterator);
+
+            BufferedWriter writer = IOUtil.openFileForBufferedWriting(pileupCountsFile);
+
+            // try {
             writeHeader(writer);
 
             for (SamLocusAndReferenceIterator.SAMLocusAndReference locusAndReference : locusAndReferenceIterator) {
@@ -144,16 +152,15 @@ public class PileupCounts extends CommandLineProgram {
 
             writer.close();
 
-            locusAndReferenceIterator.close();
-            referenceSequenceFileWalker.close();
-            reader.close();
-
-        } catch (IOException e) {
-            logger.error(e);
-            System.exit(1);
+        } finally {
+            CloserUtil.close(locusAndReferenceIterator);
+            CloserUtil.close(locusIterator);
+            CloserUtil.close(reader);
+            CloserUtil.close(referenceSequenceFileWalker);
         }
 
         logger.info("Finished");
+        return 0;
     }
 
     /**

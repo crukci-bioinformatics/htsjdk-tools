@@ -8,7 +8,6 @@
 
 package org.cruk.htsjdk.metrics;
 
-import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -19,8 +18,6 @@ import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMFileHeader.SortOrder;
 import htsjdk.samtools.SamFileHeaderMerger;
 import htsjdk.samtools.SamReader;
-import htsjdk.samtools.SamReaderFactory;
-import htsjdk.samtools.ValidationStringency;
 import htsjdk.samtools.util.CloseableIterator;
 import htsjdk.samtools.util.Interval;
 import htsjdk.samtools.util.IntervalList;
@@ -50,22 +47,16 @@ public class MergingSamLocusIterator implements CloseableIterator<LocusInfo> {
      * @param bamFiles
      * @param intervals
      */
-    public MergingSamLocusIterator(Collection<File> bamFiles, List<Interval> intervals) {
+    public MergingSamLocusIterator(Collection<SamReader> readers, List<Interval> intervals) {
 
-        // create readers for BAM files
-        List<SamReader> readers = new ArrayList<>();
+        // create merged header
         List<SAMFileHeader> headers = new ArrayList<>();
-        for (File bamFile : bamFiles) {
-            SamReader reader = SamReaderFactory.makeDefault().validationStringency(ValidationStringency.SILENT)
-                    .open(bamFile);
+        for (SamReader reader : readers) {
             if (!reader.hasIndex()) {
-                throw new SAMException("Input BAM file " + bamFile.getName() + " is not indexed");
+                throw new SAMException("SAM readers must be indexed to create a merging SAM locus iterator");
             }
-            readers.add(reader);
             headers.add(reader.getFileHeader());
         }
-
-        // create merged SAM header
         SamFileHeaderMerger headerMerger = new SamFileHeaderMerger(SortOrder.coordinate, headers, true);
         header = headerMerger.getMergedHeader();
 
