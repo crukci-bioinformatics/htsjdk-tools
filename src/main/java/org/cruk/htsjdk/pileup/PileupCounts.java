@@ -76,6 +76,9 @@ public class PileupCounts extends CommandLineProgram {
             "--minimum-mapping-quality" }, description = "Minimum mapping quality for reads to be included (default: ${DEFAULT-VALUE}).")
     private int minimumMappingQuality = 1;
 
+    @Option(names = "--output-N-counts", description = "Output counts for the number of N base calls")
+    private boolean outputNCounts = false;
+
     public static void main(String[] args) {
         int exitCode = new CommandLine(new PileupCounts()).execute(args);
         System.exit(exitCode);
@@ -191,8 +194,10 @@ public class PileupCounts extends CommandLineProgram {
         writer.write("G count");
         writer.write("\t");
         writer.write("T count");
-        writer.write("\t");
-        writer.write("N count");
+        if (outputNCounts) {
+            writer.write("\t");
+            writer.write("N count");
+        }
         writer.write("\n");
     }
 
@@ -220,7 +225,11 @@ public class PileupCounts extends CommandLineProgram {
         writer.write(Integer.toString(filteredPileup.size()));
 
         int[] baseCounts = PileupUtils.getBaseCounts(filteredPileup);
-        for (int i = 0; i < baseCounts.length; i++) {
+        int n = baseCounts.length;
+        if (!outputNCounts) {
+            n -= 1;
+        }
+        for (int i = 0; i < n; i++) {
             writer.write("\t");
             writer.write(Integer.toString(baseCounts[i]));
         }
