@@ -95,7 +95,7 @@ public class PileupUtils {
      * @param pileup list of RecordAndOffset objects
      * @return filtered list of RecordAndOffset objects
      */
-    public static List<RecordAndOffset> filterOverlappingFragments(List<RecordAndOffset> pileup) {
+    public static List<RecordAndOffset> filterOverlaps(List<RecordAndOffset> pileup) {
 
         Map<String, RecordAndOffset> retained = new HashMap<>();
         Set<String> excluded = new HashSet<>();
