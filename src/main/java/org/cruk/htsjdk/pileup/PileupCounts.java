@@ -76,6 +76,10 @@ public class PileupCounts extends CommandLineProgram {
             "--minimum-mapping-quality" }, description = "Minimum mapping quality for reads to be included (default: ${DEFAULT-VALUE}).")
     private int minimumMappingQuality = 1;
 
+    @Option(names = {
+            "--ignore-overlaps" }, description = "Disables read pair overlap detection and allows double-counting for overlapping read pairs; if not set only the end with the highest base quality at the locus is retained unless the base calls disagree in which case both ends are excluded.")
+    private boolean ignoreOverlaps = false;
+
     @Option(names = "--output-N-counts", description = "Output counts for the number of N base calls.")
     private boolean outputNCounts = false;
 
@@ -164,7 +168,9 @@ public class PileupCounts extends CommandLineProgram {
             List<RecordAndOffset> filteredPileup = PileupUtils.filterLowQualityScores(pileup, minimumBaseQuality,
                     minimumMappingQuality);
 
-            filteredPileup = PileupUtils.filterOverlappingFragments(filteredPileup);
+            if (!ignoreOverlaps) {
+                filteredPileup = PileupUtils.filterOverlaps(filteredPileup);
+            }
 
             writePileupCounts(writer, locusInfo, referenceBase, filteredPileup);
 
