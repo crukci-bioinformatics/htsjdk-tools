@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.Set;
 
 import htsjdk.samtools.SAMRecord;
-import htsjdk.samtools.util.SamLocusIterator.RecordAndOffset;
+import htsjdk.samtools.util.AbstractRecordAndOffset;
 import htsjdk.samtools.util.SequenceUtil;
 
 /**
@@ -49,9 +49,9 @@ public class PileupUtils {
      * @param pileup
      * @return an array of A, C, G, T and N counts
      */
-    public static int[] getBaseCounts(List<RecordAndOffset> pileup) {
+    public static <T extends AbstractRecordAndOffset> int[] getBaseCounts(List<T> pileup) {
         int[] counts = new int[VALID_BASES.length];
-        for (RecordAndOffset recordAndOffset : pileup) {
+        for (T recordAndOffset : pileup) {
             byte base = recordAndOffset.getReadBase();
             int index = BASE_INDEX_LOOKUP[base];
             if (index != -1) {
@@ -70,10 +70,10 @@ public class PileupUtils {
      * @param minimumMappingQuality minimum mapping quality score
      * @return filtered list of RecordAndOffset objects
      */
-    public static List<RecordAndOffset> filterLowQualityScores(List<RecordAndOffset> pileup, int minimumBaseQuality,
-            int minimumMappingQuality) {
-        List<RecordAndOffset> filteredPileup = new ArrayList<>();
-        for (RecordAndOffset recordAndOffset : pileup) {
+    public static <T extends AbstractRecordAndOffset> List<T> filterLowQualityScores(List<T> pileup,
+            int minimumBaseQuality, int minimumMappingQuality) {
+        List<T> filteredPileup = new ArrayList<>();
+        for (T recordAndOffset : pileup) {
             SAMRecord record = recordAndOffset.getRecord();
             if (recordAndOffset.getBaseQuality() >= minimumBaseQuality
                     && record.getMappingQuality() >= minimumMappingQuality) {
@@ -95,12 +95,12 @@ public class PileupUtils {
      * @param pileup list of RecordAndOffset objects
      * @return filtered list of RecordAndOffset objects
      */
-    public static List<RecordAndOffset> filterOverlaps(List<RecordAndOffset> pileup) {
+    public static <T extends AbstractRecordAndOffset> List<T> filterOverlaps(List<T> pileup) {
 
-        Map<String, RecordAndOffset> retained = new HashMap<>();
+        Map<String, T> retained = new HashMap<>();
         Set<String> excluded = new HashSet<>();
 
-        for (RecordAndOffset recordAndOffset : pileup) {
+        for (T recordAndOffset : pileup) {
 
             SAMRecord record = recordAndOffset.getRecord();
             String name = record.getReadName();
@@ -112,7 +112,7 @@ public class PileupUtils {
             }
 
             // check if consistent with previously seen record for this read
-            RecordAndOffset previous = retained.get(name);
+            T previous = retained.get(name);
             if (previous == null) {
                 retained.put(name, recordAndOffset);
             } else {
