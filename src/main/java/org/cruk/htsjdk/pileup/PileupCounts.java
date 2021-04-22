@@ -11,7 +11,7 @@ package org.cruk.htsjdk.pileup;
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.IOException;
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.logging.log4j.LogManager;
@@ -25,7 +25,9 @@ import htsjdk.samtools.SamReader;
 import htsjdk.samtools.SamReaderFactory;
 import htsjdk.samtools.ValidationStringency;
 import htsjdk.samtools.filter.DuplicateReadFilter;
+import htsjdk.samtools.filter.SamRecordFilter;
 import htsjdk.samtools.filter.SecondaryAlignmentFilter;
+import htsjdk.samtools.filter.SecondaryOrSupplementaryFilter;
 import htsjdk.samtools.reference.ReferenceSequenceFile;
 import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
 import htsjdk.samtools.util.IOUtil;
@@ -75,6 +77,9 @@ public class PileupCounts extends CommandLineProgram {
     @Option(names = { "-m",
             "--minimum-mapping-quality" }, description = "Minimum mapping quality for reads to be included (default: ${DEFAULT-VALUE}).")
     private int minimumMappingQuality = 1;
+
+    @Option(names = "--include-supplementary", description = "Include supplementary records from split read alignments.")
+    private boolean includeSupplementaryRecords = false;
 
     @Option(names = {
             "--ignore-overlaps" }, description = "Disables read pair overlap detection and allows double-counting for overlapping read pairs; if not set only the end with the highest base quality at the locus is retained unless the base calls disagree in which case both ends are excluded.")
@@ -147,7 +152,16 @@ public class PileupCounts extends CommandLineProgram {
         locusIterator.setIncludeNonPfReads(false);
 
         // exclude secondary alignments and reads marked as duplicates
-        locusIterator.setSamFilters(Arrays.asList(new SecondaryAlignmentFilter(), new DuplicateReadFilter()));
+        // optionally include/exclude supplementary alignment records from split
+        // read alignments
+        List<SamRecordFilter> samFilters = new ArrayList<>();
+        samFilters.add(new DuplicateReadFilter());
+        if (includeSupplementaryRecords) {
+            samFilters.add(new SecondaryAlignmentFilter());
+        } else {
+            samFilters.add(new SecondaryOrSupplementaryFilter());
+        }
+        locusIterator.setSamFilters(samFilters);
 
         BufferedWriter writer = IOUtil.openFileForBufferedWriting(pileupCountsFile);
 
