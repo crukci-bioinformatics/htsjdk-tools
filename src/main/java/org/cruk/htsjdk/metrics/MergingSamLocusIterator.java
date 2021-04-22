@@ -18,6 +18,7 @@ import htsjdk.samtools.SAMFileHeader;
 import htsjdk.samtools.SAMFileHeader.SortOrder;
 import htsjdk.samtools.SamFileHeaderMerger;
 import htsjdk.samtools.SamReader;
+import htsjdk.samtools.filter.SamRecordFilter;
 import htsjdk.samtools.util.CloseableIterator;
 import htsjdk.samtools.util.Interval;
 import htsjdk.samtools.util.IntervalList;
@@ -47,7 +48,7 @@ public class MergingSamLocusIterator implements CloseableIterator<LocusInfo> {
      * @param bamFiles
      * @param intervals
      */
-    public MergingSamLocusIterator(Collection<SamReader> readers, List<Interval> intervals) {
+    public MergingSamLocusIterator(Collection<SamReader> readers, List<SamRecordFilter> samFilters, List<Interval> intervals) {
         // create merged header
         List<SAMFileHeader> headers = new ArrayList<>();
         for (SamReader reader : readers) {
@@ -68,6 +69,7 @@ public class MergingSamLocusIterator implements CloseableIterator<LocusInfo> {
         List<CloseableIterator<LocusInfo>> locusIterators = new ArrayList<>();
         for (SamReader reader : readers) {
             SamLocusIterator locusIterator = new SamLocusIterator(reader, intervalList);
+            locusIterator.setSamFilters(samFilters);
             locusIterators.add(locusIterator);
         }
         MergingIterator<LocusInfo> mergingLocusIterator = new MergingIterator<>(new LocusComparator<>(),
