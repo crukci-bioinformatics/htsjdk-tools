@@ -44,9 +44,22 @@ public class PileupUtils {
     }
 
     /**
+     * Returns the index for accessing the count for the specific base in the array
+     * returned by getBaseCounts.
+     *
+     * Valid bases are 'A', 'C', 'G', 'T', 'N' and their lower case equivalents.
+     *
+     * @param base the base
+     * @return an index into the array of base counts
+     */
+    public static int getBaseIndex(byte base) {
+        return BASE_INDEX_LOOKUP[base];
+    }
+
+    /**
      * Returns an array of base counts for the list of RecordAndOffset objects.
      *
-     * @param pileup
+     * @param pileup list of RecordAndOffset objects
      * @return an array of A, C, G, T and N counts
      */
     public static <T extends AbstractRecordAndOffset> int[] getBaseCounts(List<T> pileup) {
@@ -59,6 +72,45 @@ public class PileupUtils {
             }
         }
         return counts;
+    }
+
+    /**
+     * Filters a list of RecordAndOffset objects removing those with mapping quality
+     * scores below the minimum value specified.
+     *
+     * @param pileup                list of RecordAndOffset objects
+     * @param minimumMappingQuality minimum mapping quality score
+     * @return filtered list of RecordAndOffset objects
+     */
+    public static <T extends AbstractRecordAndOffset> List<T> filterLowMappingQualities(List<T> pileup,
+            int minimumMappingQuality) {
+        List<T> filteredPileup = new ArrayList<>();
+        for (T recordAndOffset : pileup) {
+            SAMRecord record = recordAndOffset.getRecord();
+            if (record.getMappingQuality() >= minimumMappingQuality) {
+                filteredPileup.add(recordAndOffset);
+            }
+        }
+        return filteredPileup;
+    }
+
+    /**
+     * Filters a list of RecordAndOffset objects removing those with base quality
+     * scores below the minimum value specified.
+     *
+     * @param pileup             list of RecordAndOffset objects
+     * @param minimumBaseQuality minimum base quality score
+     * @return filtered list of RecordAndOffset objects
+     */
+    public static <T extends AbstractRecordAndOffset> List<T> filterLowBaseQualities(List<T> pileup,
+            int minimumBaseQuality) {
+        List<T> filteredPileup = new ArrayList<>();
+        for (T recordAndOffset : pileup) {
+            if (recordAndOffset.getBaseQuality() >= minimumBaseQuality) {
+                filteredPileup.add(recordAndOffset);
+            }
+        }
+        return filteredPileup;
     }
 
     /**
@@ -129,5 +181,24 @@ public class PileupUtils {
         }
 
         return new ArrayList<>(retained.values());
+    }
+
+    /**
+     * Filters a list of RecordAndOffset objects retaining only those for reads
+     * belonging to read groups matching the given sample names.
+     *
+     * @param pileup  list of RecordAndOffset objects
+     * @param samples the names of samples
+     * @return filtered list of RecordAndOffset objects
+     */
+    public static <T extends AbstractRecordAndOffset> List<T> filterSamples(List<T> pileup, Set<String> samples) {
+        List<T> filteredPileup = new ArrayList<>();
+        for (T recordAndOffset : pileup) {
+            SAMRecord record = recordAndOffset.getRecord();
+            if (samples.contains(record.getReadGroup().getSample())) {
+                filteredPileup.add(recordAndOffset);
+            }
+        }
+        return filteredPileup;
     }
 }
