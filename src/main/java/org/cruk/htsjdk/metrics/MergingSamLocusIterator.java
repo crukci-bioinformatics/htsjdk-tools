@@ -48,7 +48,8 @@ public class MergingSamLocusIterator implements CloseableIterator<LocusInfo> {
      * @param bamFiles
      * @param intervals
      */
-    public MergingSamLocusIterator(Collection<SamReader> readers, List<SamRecordFilter> samFilters, List<Interval> intervals) {
+    public MergingSamLocusIterator(Collection<SamReader> readers, List<SamRecordFilter> samFilters,
+            List<Interval> intervals) {
         // create merged header
         List<SAMFileHeader> headers = new ArrayList<>();
         for (SamReader reader : readers) {
@@ -84,8 +85,9 @@ public class MergingSamLocusIterator implements CloseableIterator<LocusInfo> {
 
     @Override
     public LocusInfo next() {
-        if (!iterator.hasNext())
+        if (!iterator.hasNext()) {
             throw new NoSuchElementException();
+        }
 
         LocusInfo locusInfo = iterator.next();
 
