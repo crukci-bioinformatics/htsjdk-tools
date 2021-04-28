@@ -360,7 +360,13 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
         calculateStrandBiasMetrics(variantAllele, referenceBase, samplePileup, referencePileup, metrics);
 
-        calculateVariantAlleleMetrics(variantAllele, samplePileup, metrics);
+        Pileup<RecordAndOffset> variantReadPileup = samplePileup.getBaseFilteredPileup(variantAllele);
+        Pileup<RecordAndOffset> referenceReadPileup = referencePileup.getBaseFilteredPileup(referenceBase);
+
+        calculateBaseQualityMetrics(variantReadPileup, metrics);
+        calculateMismatchBaseQualityMetrics(variantReadPileup, referenceReadPileup, metrics);
+        calculateMappingQualityMetrics(variantReadPileup, referenceReadPileup, metrics);
+        calculateDistanceToAlignmentEndMetrics(variantReadPileup, metrics);
 
         return metrics;
     }
@@ -411,47 +417,108 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     }
 
     /**
-     * Calculate metrics for reads with the variant allele.
+     * Calculates metrics based on base quality scores in the variant reads.
      *
-     * @param variantAllele
-     * @param pileup
+     * @param variantReadPileup
      * @param metrics
      */
-    private void calculateVariantAlleleMetrics(byte variantAllele, Pileup<RecordAndOffset> pileup,
-            Map<String, Object> metrics) {
-        DescriptiveStatistics variantBaseQualityStats = new DescriptiveStatistics();
-        DescriptiveStatistics variantMappingQualityStats = new DescriptiveStatistics();
-        DescriptiveStatistics variantMMQSStatistics = new DescriptiveStatistics();
-        DescriptiveStatistics variantDistanceToAlignmentEndStatistics = new DescriptiveStatistics();
+    private void calculateBaseQualityMetrics(Pileup<RecordAndOffset> variantReadPileup, Map<String, Object> metrics) {
 
-        Pileup<RecordAndOffset> variantAllelePileup = pileup.getBaseFilteredPileup(variantAllele);
-        for (RecordAndOffset recordAndOffset : variantAllelePileup) {
+        DescriptiveStatistics variantBaseQualityStats = new DescriptiveStatistics();
+
+        for (RecordAndOffset recordAndOffset : variantReadPileup) {
             variantBaseQualityStats.addValue(recordAndOffset.getBaseQuality());
-            variantMappingQualityStats.addValue(recordAndOffset.getRecord().getMappingQuality());
-            variantMMQSStatistics.addValue(getMismatchQualitySum(recordAndOffset));
-            variantDistanceToAlignmentEndStatistics.addValue(getDistanceToAlignmentEnd(recordAndOffset));
         }
 
         if (variantBaseQualityStats.getN() > 0) {
             metrics.put(VARIANT_BASE_QUALITY_MEAN, variantBaseQualityStats.getMean());
             metrics.put(VARIANT_BASE_QUALITY_MEDIAN, variantBaseQualityStats.getPercentile(50));
         }
+    }
 
-        if (variantMappingQualityStats.getN() > 0) {
-            metrics.put(VARIANT_MAPPING_QUALITY_MEAN, variantMappingQualityStats.getMean());
-            metrics.put(VARIANT_MAPPING_QUALITY_MEDIAN, variantMappingQualityStats.getPercentile(50));
+    /**
+     * Calculates mismatch base quality score metrics.
+     * 
+     * @param variantReadPileup
+     * @param referenceReadPileup
+     * @param metrics
+     */
+    private void calculateMismatchBaseQualityMetrics(Pileup<RecordAndOffset> variantReadPileup,
+            Pileup<RecordAndOffset> referenceReadPileup, Map<String, Object> metrics) {
+
+        DescriptiveStatistics variantMMQSStatistics = new DescriptiveStatistics();
+        DescriptiveStatistics referenceMMQSStats = new DescriptiveStatistics();
+
+        for (RecordAndOffset recordAndOffset : variantReadPileup) {
+            variantMMQSStatistics.addValue(getMismatchQualitySum(recordAndOffset));
+        }
+
+        for (RecordAndOffset recordAndOffset : referenceReadPileup) {
+            referenceMMQSStats.addValue(getMismatchQualitySum(recordAndOffset));
         }
 
         if (variantMMQSStatistics.getN() > 0) {
             metrics.put(VARIANT_MMQS_MEAN, variantMMQSStatistics.getMean());
             metrics.put(VARIANT_MMQS_MEDIAN, variantMMQSStatistics.getPercentile(50));
+            if (referenceMMQSStats.getN() > 0) {
+                metrics.put(MMQS_MEAN_DIFFERENCE, variantMMQSStatistics.getMean() - referenceMMQSStats.getMean());
+                metrics.put(MMQS_MEDIAN_DIFFERENCE,
+                        variantMMQSStatistics.getPercentile(50) - referenceMMQSStats.getPercentile(50));
+            }
+        }
+    }
+
+    /**
+     * Calculates metrics based on mapping qualities in the variant and reference
+     * reads.
+     *
+     * @param variantReadPileup
+     * @param referenceReadPileup
+     * @param metrics
+     */
+    private void calculateMappingQualityMetrics(Pileup<RecordAndOffset> variantReadPileup,
+            Pileup<RecordAndOffset> referenceReadPileup, Map<String, Object> metrics) {
+
+        DescriptiveStatistics variantMappingQualityStats = new DescriptiveStatistics();
+        DescriptiveStatistics referenceMappingQualityStats = new DescriptiveStatistics();
+
+        for (RecordAndOffset recordAndOffset : variantReadPileup) {
+            variantMappingQualityStats.addValue(recordAndOffset.getRecord().getMappingQuality());
         }
 
-        if (variantDistanceToAlignmentEndStatistics.getN() > 0) {
-            metrics.put(DISTANCE_TO_ALIGNMENT_END_MEAN, variantDistanceToAlignmentEndStatistics.getMean());
-            metrics.put(DISTANCE_TO_ALIGNMENT_END_MEDIAN, variantDistanceToAlignmentEndStatistics.getPercentile(50));
-            metrics.put(DISTANCE_TO_ALIGNMENT_END_MAD,
-                    getMedianAbsoluteDeviation(variantDistanceToAlignmentEndStatistics));
+        for (RecordAndOffset recordAndOffset : referenceReadPileup) {
+            referenceMappingQualityStats.addValue(recordAndOffset.getRecord().getMappingQuality());
+        }
+
+        if (variantMappingQualityStats.getN() > 0) {
+            metrics.put(VARIANT_MAPPING_QUALITY_MEAN, variantMappingQualityStats.getMean());
+            metrics.put(VARIANT_MAPPING_QUALITY_MEDIAN, variantMappingQualityStats.getPercentile(50));
+            if (referenceMappingQualityStats.getN() > 0) {
+                // TODO
+            }
+        }
+    }
+
+    /**
+     * Calculates distance to alignment end metrics for the variant position within
+     * reads.
+     *
+     * @param variantReadPileup
+     * @param metrics
+     */
+    private void calculateDistanceToAlignmentEndMetrics(Pileup<RecordAndOffset> variantReadPileup,
+            Map<String, Object> metrics) {
+
+        DescriptiveStatistics variantDistanceToAlignmentEndStats = new DescriptiveStatistics();
+
+        for (RecordAndOffset recordAndOffset : variantReadPileup) {
+            variantDistanceToAlignmentEndStats.addValue(getDistanceToAlignmentEnd(recordAndOffset));
+        }
+
+        if (variantDistanceToAlignmentEndStats.getN() > 0) {
+            metrics.put(DISTANCE_TO_ALIGNMENT_END_MEAN, variantDistanceToAlignmentEndStats.getMean());
+            metrics.put(DISTANCE_TO_ALIGNMENT_END_MEDIAN, variantDistanceToAlignmentEndStats.getPercentile(50));
+            metrics.put(DISTANCE_TO_ALIGNMENT_END_MAD, getMedianAbsoluteDeviation(variantDistanceToAlignmentEndStats));
         }
     }
 
@@ -595,6 +662,8 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     private static final String VARIANT_MAPPING_QUALITY_MEDIAN = "VariantMapQualMedian";
     private static final String VARIANT_MMQS_MEAN = "VariantMMQS";
     private static final String VARIANT_MMQS_MEDIAN = "VariantMMQSMedian";
+    private static final String MMQS_MEAN_DIFFERENCE = "MMQSDiff";
+    private static final String MMQS_MEDIAN_DIFFERENCE = "MMQSDiffMedian";
     private static final String DISTANCE_TO_ALIGNMENT_END_MEAN = "DistanceToAlignmentEnd";
     private static final String DISTANCE_TO_ALIGNMENT_END_MEDIAN = "DistanceToAlignmentEndMedian";
     private static final String DISTANCE_TO_ALIGNMENT_END_MAD = "DistanceToAlignmentEndMAD";
@@ -651,6 +720,11 @@ public class CalculateSnvMetrics extends CommandLineProgram {
                 "The mean mismatch quality sum for variant reads."));
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEDIAN, 1, VCFHeaderLineType.Float,
                 "The median mismatch quality sum for variant reads."));
+
+        header.addMetaDataLine(new VCFInfoHeaderLine(MMQS_MEAN_DIFFERENCE, 1, VCFHeaderLineType.Float,
+                "The difference in mean mismatch quality sum of variant and reference reads."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(MMQS_MEDIAN_DIFFERENCE, 1, VCFHeaderLineType.Float,
+                "The difference in median mismatch quality sum of variant and reference reads."));
 
         header.addMetaDataLine(new VCFInfoHeaderLine(DISTANCE_TO_ALIGNMENT_END_MEAN, 1, VCFHeaderLineType.Float,
                 "The mean shortest distance of the variant position within the read to either aligned end."));
