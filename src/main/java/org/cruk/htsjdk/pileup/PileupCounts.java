@@ -177,16 +177,15 @@ public class PileupCounts extends CommandLineProgram {
                         .getBaseString();
             }
 
-            List<RecordAndOffset> pileup = locusInfo.getRecordAndOffsets();
+            Pileup<RecordAndOffset> pileup = new Pileup<>(locusInfo.getRecordAndOffsets());
 
-            List<RecordAndOffset> filteredPileup = PileupUtils.filterLowQualityScores(pileup, minimumBaseQuality,
-                    minimumMappingQuality);
+            pileup = pileup.getMappingAndBaseQualityFilteredPileup(minimumMappingQuality, minimumBaseQuality);
 
             if (!ignoreOverlaps) {
-                filteredPileup = PileupUtils.filterOverlaps(filteredPileup);
+                pileup = pileup.getOverlapFilteredPileup();
             }
 
-            writePileupCounts(writer, locusInfo, referenceBase, filteredPileup);
+            writePileupCounts(writer, locusInfo, referenceBase, pileup);
 
             progress.record(locusInfo.getContig(), locusInfo.getPosition());
         }
@@ -241,7 +240,7 @@ public class PileupCounts extends CommandLineProgram {
     }
 
     private void writePileupCounts(BufferedWriter writer, LocusInfo locusInfo, String referenceBase,
-            List<RecordAndOffset> filteredPileup) throws IOException {
+            Pileup<RecordAndOffset> pileup) throws IOException {
 
         if (id != null) {
             writer.write(id);
@@ -261,9 +260,9 @@ public class PileupCounts extends CommandLineProgram {
         writer.write(Integer.toString(locusInfo.size()));
 
         writer.write("\t");
-        writer.write(Integer.toString(filteredPileup.size()));
+        writer.write(Integer.toString(pileup.size()));
 
-        int[] baseCounts = PileupUtils.getBaseCounts(filteredPileup);
+        int[] baseCounts = pileup.getBaseCounts();
         int n = baseCounts.length;
         if (!outputNCounts) {
             n -= 1;
