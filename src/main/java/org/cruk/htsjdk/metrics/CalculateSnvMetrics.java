@@ -20,7 +20,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cruk.htsjdk.CommandLineProgram;
 import org.cruk.htsjdk.ProgressLogger;
-import org.cruk.htsjdk.pileup.PileupUtils;
+import org.cruk.htsjdk.pileup.Pileup;
 
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.SamReader;
@@ -142,7 +142,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         while (mergingSamLocusIterator.hasNext()) {
             LocusInfo locusInfo = mergingSamLocusIterator.next();
 
-            List<RecordAndOffset> pileup = locusInfo.getRecordAndOffsets();
+            Pileup<RecordAndOffset> pileup = new Pileup<>(locusInfo.getRecordAndOffsets());
 
             boolean foundMatchingSnv = false;
 
@@ -259,7 +259,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
      * @param pileup the read pileup
      * @return the computed SNV metrics
      */
-    private Map<String, Object> calculateSnvMetrics(VariantContext snv, List<RecordAndOffset> pileup) {
+    private Map<String, Object> calculateSnvMetrics(VariantContext snv, Pileup<RecordAndOffset> pileup) {
 
         Map<String, Object> metrics = new HashMap<>();
 
@@ -268,35 +268,35 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
         // depth metrics calculated before applying additional mapping quality and
         // overlap filters
-        metrics.put(DEPTH, samples.isEmpty() ? pileup.size() : PileupUtils.filterSamples(pileup, samples).size());
+        metrics.put(DEPTH, samples.isEmpty() ? pileup.size() : pileup.getSampleFilteredPileup(samples).size());
 
         if (!controlSamples.isEmpty()) {
-            metrics.put(DEPTH_CONTROL, PileupUtils.filterSamples(pileup, controlSamples).size());
+            metrics.put(DEPTH_CONTROL, pileup.getSampleFilteredPileup(controlSamples).size());
         }
 
         int unfilteredReadCount = pileup.size();
 
         // apply mapping quality filter
-        pileup = PileupUtils.filterLowMappingQualities(pileup, minimumMappingQuality);
+        pileup = pileup.getMappingQualityFilteredPileup(minimumMappingQuality);
 
         if (unfilteredReadCount > 0) {
             metrics.put(LOW_MAPPING_QUALITY, 1.0 - (pileup.size() / (double) unfilteredReadCount));
         }
 
         // apply base quality filter
-        pileup = PileupUtils.filterLowBaseQualities(pileup, minimumBaseQuality);
+        pileup = pileup.getBaseQualityFilteredPileup(minimumBaseQuality);
 
         // apply filter for overlapping fragments
-        pileup = PileupUtils.filterOverlaps(pileup);
+        pileup = pileup.getOverlapFilteredPileup();
 
         // apply filter for the specified sample(s)
-        List<RecordAndOffset> samplePileup = samples.isEmpty() ? pileup : PileupUtils.filterSamples(pileup, samples);
+        Pileup<RecordAndOffset> samplePileup = samples.isEmpty() ? pileup : pileup.getSampleFilteredPileup(samples);
 
         // collect reference metrics from control samples if these exist,
         // otherwise from reference-supporting reads in the same set of
         // samples used for computing the variant metrics
-        List<RecordAndOffset> referencePileup = controlSamples.isEmpty() ? samplePileup
-                : PileupUtils.filterSamples(pileup, controlSamples);
+        Pileup<RecordAndOffset> referencePileup = controlSamples.isEmpty() ? samplePileup
+                : pileup.getSampleFilteredPileup(controlSamples);
 
         int readCount = samplePileup.size();
         metrics.put(READ_COUNT, readCount);
@@ -306,22 +306,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             metrics.put(READ_COUNT_CONTROL, referenceReadCount);
         }
 
-        int referenceBaseIndex = PileupUtils.getBaseIndex(referenceBase);
-        if (referenceBaseIndex == -1) {
-            logger.warn("Unrecognized reference base for SNV: " + getSnvId(snv));
-            return metrics;
-        }
-
-        int variantAlleleIndex = PileupUtils.getBaseIndex(variantAllele);
-        if (variantAlleleIndex == -1) {
-            logger.warn("Unrecognized alternate allele for SNV: " + getSnvId(snv));
-            return metrics;
-        }
-
-        int[] sampleBaseCounts = PileupUtils.getBaseCounts(samplePileup);
-        int[] referenceBaseCounts = PileupUtils.getBaseCounts(referencePileup);
-
-        int variantReadCount = sampleBaseCounts[variantAlleleIndex];
+        int variantReadCount = samplePileup.getBaseCount(variantAllele);
         metrics.put(VARIANT_ALLELE_COUNT, variantReadCount);
 
         if (readCount > 0) {
@@ -329,7 +314,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         }
 
         if (!controlSamples.isEmpty()) {
-            int variantAlleleCountControl = referenceBaseCounts[variantAlleleIndex];
+            int variantAlleleCountControl = referencePileup.getBaseCount(variantAllele);
             metrics.put(VARIANT_ALLELE_COUNT_CONTROL, variantAlleleCountControl);
             if (readCount > 0) {
                 metrics.put(VARIANT_ALLELE_FREQUENCY_CONTROL, variantAlleleCountControl / (double) referenceReadCount);
@@ -337,7 +322,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         }
 
         // strand bias metrics
-        List<RecordAndOffset> negativeStrandPileup = PileupUtils.filterNegativeStrand(samplePileup);
+        Pileup<RecordAndOffset> negativeStrandPileup = samplePileup.getNegativeStrandPileup();
         if (readCount > 0) {
             double strandBias = negativeStrandPileup.size() / (double) readCount;
             if (strandBias > 0.5)
@@ -345,15 +330,14 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             metrics.put(STRAND_BIAS, strandBias);
         }
         if (variantReadCount > 0) {
-            double variantStrandBias = PileupUtils.getBaseCounts(negativeStrandPileup)[variantAlleleIndex]
-                    / (double) variantReadCount;
+            double variantStrandBias = negativeStrandPileup.getBaseCount(variantAllele) / (double) variantReadCount;
             if (variantStrandBias > 0.5)
                 variantStrandBias = 1.0 - variantStrandBias;
             metrics.put(VARIANT_STRAND_BIAS, variantStrandBias);
         }
         if (referenceReadCount > 0) {
-            List<RecordAndOffset> referenceNegativeStrandPileup = PileupUtils.filterNegativeStrand(referencePileup);
-            double referenceStrandBias = PileupUtils.getBaseCounts(referenceNegativeStrandPileup)[referenceBaseIndex]
+            Pileup<RecordAndOffset> referenceNegativeStrandPileup = referencePileup.getNegativeStrandPileup();
+            double referenceStrandBias = referenceNegativeStrandPileup.getBaseCount(referenceBase)
                     / (double) referenceReadCount;
             if (referenceStrandBias > 0.5)
                 referenceStrandBias = 1.0 - referenceStrandBias;
