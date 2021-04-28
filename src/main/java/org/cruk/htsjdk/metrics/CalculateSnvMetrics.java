@@ -151,13 +151,13 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
                 VariantContext snv = snvIterator.next();
 
-                String key = getSnvKey(snv);
+                String id = getSnvId(snv);
 
                 // shouldn't really have multiple entries for the same variant
                 // but only compute the metrics once for each distinct SNV
-                if (!metricsLookup.containsKey(key)) {
+                if (!metricsLookup.containsKey(id)) {
                     Map<String, Object> metrics = calculateSnvMetrics(snv, pileup);
-                    metricsLookup.put(key, metrics);
+                    metricsLookup.put(id, metrics);
                 }
             }
 
@@ -205,7 +205,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             if (variant.isSNP()) {
                 snvs.add(variant);
                 if (variant.getAlternateAlleles().size() > 1) {
-                    logger.warn("Warning multiple alternate alleles for variant " + getSnvKey(variant)
+                    logger.warn("Warning multiple alternate alleles for variant " + getSnvId(variant)
                             + "; only computing metrics for allele with highest allele count.");
                 }
             }
@@ -244,7 +244,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
      * @param snv
      * @return
      */
-    private String getSnvKey(VariantContext snv) {
+    private String getSnvId(VariantContext snv) {
         return String.format("%s:%d %c>%c", snv.getContig(), snv.getStart(), snv.getReference().getBases()[0],
                 snv.getAltAlleleWithHighestAlleleCount().getBases()[0]);
     }
@@ -308,24 +308,24 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
         int referenceBaseIndex = PileupUtils.getBaseIndex(referenceBase);
         if (referenceBaseIndex == -1) {
-            logger.warn("Unrecognized reference base for SNV: " + getSnvKey(snv));
+            logger.warn("Unrecognized reference base for SNV: " + getSnvId(snv));
             return metrics;
         }
 
         int variantAlleleIndex = PileupUtils.getBaseIndex(variantAllele);
         if (variantAlleleIndex == -1) {
-            logger.warn("Unrecognized alternate allele for SNV: " + getSnvKey(snv));
+            logger.warn("Unrecognized alternate allele for SNV: " + getSnvId(snv));
             return metrics;
         }
 
         int[] sampleBaseCounts = PileupUtils.getBaseCounts(samplePileup);
         int[] referenceBaseCounts = PileupUtils.getBaseCounts(referencePileup);
 
-        int variantAlleleCount = sampleBaseCounts[variantAlleleIndex];
-        metrics.put(VARIANT_ALLELE_COUNT, variantAlleleCount);
+        int variantReadCount = sampleBaseCounts[variantAlleleIndex];
+        metrics.put(VARIANT_ALLELE_COUNT, variantReadCount);
 
         if (readCount > 0) {
-            metrics.put(VARIANT_ALLELE_FREQUENCY, variantAlleleCount / (double) readCount);
+            metrics.put(VARIANT_ALLELE_FREQUENCY, variantReadCount / (double) readCount);
         }
 
         if (!controlSamples.isEmpty()) {
@@ -334,6 +334,30 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             if (readCount > 0) {
                 metrics.put(VARIANT_ALLELE_FREQUENCY_CONTROL, variantAlleleCountControl / (double) referenceReadCount);
             }
+        }
+
+        // strand bias metrics
+        List<RecordAndOffset> negativeStrandPileup = PileupUtils.filterNegativeStrand(samplePileup);
+        if (readCount > 0) {
+            double strandBias = negativeStrandPileup.size() / (double) readCount;
+            if (strandBias > 0.5)
+                strandBias = 1.0 - strandBias;
+            metrics.put(STRAND_BIAS, strandBias);
+        }
+        if (variantReadCount > 0) {
+            double variantStrandBias = PileupUtils.getBaseCounts(negativeStrandPileup)[variantAlleleIndex]
+                    / (double) variantReadCount;
+            if (variantStrandBias > 0.5)
+                variantStrandBias = 1.0 - variantStrandBias;
+            metrics.put(VARIANT_STRAND_BIAS, variantStrandBias);
+        }
+        if (referenceReadCount > 0) {
+            List<RecordAndOffset> referenceNegativeStrandPileup = PileupUtils.filterNegativeStrand(referencePileup);
+            double referenceStrandBias = PileupUtils.getBaseCounts(referenceNegativeStrandPileup)[referenceBaseIndex]
+                    / (double) referenceReadCount;
+            if (referenceStrandBias > 0.5)
+                referenceStrandBias = 1.0 - referenceStrandBias;
+            metrics.put(REFERENCE_STRAND_BIAS, referenceStrandBias);
         }
 
         return metrics;
@@ -357,10 +381,10 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
         for (VariantContext variant : reader) {
             if (variant.isSNP()) {
-                String key = getSnvKey(variant);
-                Map<String, Object> metrics = metricsLookup.get(key);
+                String id = getSnvId(variant);
+                Map<String, Object> metrics = metricsLookup.get(id);
                 if (metrics == null) {
-                    logger.warn("No metrics retrieved from lookup for SNV: " + key);
+                    logger.warn("No metrics retrieved from lookup for SNV: " + id);
                 } else {
                     variant.getCommonInfo().putAttributes(metrics);
                 }
@@ -381,6 +405,9 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     private static final String VARIANT_ALLELE_COUNT_CONTROL = "VariantAlleleCountControl";
     private static final String VARIANT_ALLELE_FREQUENCY = "VariantAlleleFrequency";
     private static final String VARIANT_ALLELE_FREQUENCY_CONTROL = "VariantAlleleFrequencyControl";
+    private static final String STRAND_BIAS = "StrandBias";
+    private static final String VARIANT_STRAND_BIAS = "VariantStrandBias";
+    private static final String REFERENCE_STRAND_BIAS = "ReferenceStrandBias";
 
     /**
      * Add header lines for the added INFO fields.
@@ -407,10 +434,18 @@ public class CalculateSnvMetrics extends CommandLineProgram {
                 "The variant allele count, i.e. the number of reads supporting the variant allele."));
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_COUNT_CONTROL, 1, VCFHeaderLineType.String,
                 "The variant allele count in the control sample(s)."));
+
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_FREQUENCY, 1, VCFHeaderLineType.String,
                 "The variant allele frequency, i.e. the fraction of reads supporting the variant allele."));
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_FREQUENCY_CONTROL, 1, VCFHeaderLineType.String,
                 "The variant allele frequency in the control sample(s)."));
+
+        header.addMetaDataLine(new VCFInfoHeaderLine(STRAND_BIAS, 1, VCFHeaderLineType.String,
+                "The strand bias for all reads covering the variant position."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_STRAND_BIAS, 1, VCFHeaderLineType.String,
+                "The strand bias for variant-supporting reads."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(REFERENCE_STRAND_BIAS, 1, VCFHeaderLineType.String,
+                "The strand bias for reference-supporting reads."));
 
         // header.addMetaDataLine(new VCFInfoHeaderLine(ANNOTATION, 1,
         // VCFHeaderLineType.String, ""));
