@@ -63,6 +63,7 @@ import picocli.CommandLine.Option;
  */
 @Command(name = "calculate-snv-metrics", versionProvider = CalculateSnvMetrics.class, description = "\nCalculates metrics for single nucleotide variants (SNVs) from a VCF file based on aligned reads from the given BAM file(s).\n", mixinStandardHelpOptions = true)
 public class CalculateSnvMetrics extends CommandLineProgram {
+
     private static final Logger logger = LogManager.getLogger();
 
     @Option(names = { "-i",
@@ -418,30 +419,39 @@ public class CalculateSnvMetrics extends CommandLineProgram {
      */
     private void calculateVariantAlleleMetrics(byte variantAllele, Pileup<RecordAndOffset> pileup,
             Map<String, Object> metrics) {
-        DescriptiveStatistics baseQualityStats = new DescriptiveStatistics();
-        DescriptiveStatistics mappingQualityStats = new DescriptiveStatistics();
+        DescriptiveStatistics variantBaseQualityStats = new DescriptiveStatistics();
+        DescriptiveStatistics variantMappingQualityStats = new DescriptiveStatistics();
         DescriptiveStatistics variantMMQSStatistics = new DescriptiveStatistics();
+        DescriptiveStatistics variantDistanceToAlignmentEndStatistics = new DescriptiveStatistics();
 
         Pileup<RecordAndOffset> variantAllelePileup = pileup.getBaseFilteredPileup(variantAllele);
         for (RecordAndOffset recordAndOffset : variantAllelePileup) {
-            baseQualityStats.addValue(recordAndOffset.getBaseQuality());
-            mappingQualityStats.addValue(recordAndOffset.getRecord().getMappingQuality());
+            variantBaseQualityStats.addValue(recordAndOffset.getBaseQuality());
+            variantMappingQualityStats.addValue(recordAndOffset.getRecord().getMappingQuality());
             variantMMQSStatistics.addValue(getMismatchQualitySum(recordAndOffset));
+            variantDistanceToAlignmentEndStatistics.addValue(getDistanceToAlignmentEnd(recordAndOffset));
         }
 
-        if (baseQualityStats.getN() > 0) {
-            metrics.put(VARIANT_BASE_QUALITY_MEAN, baseQualityStats.getMean());
-            metrics.put(VARIANT_BASE_QUALITY_MEDIAN, baseQualityStats.getPercentile(50));
+        if (variantBaseQualityStats.getN() > 0) {
+            metrics.put(VARIANT_BASE_QUALITY_MEAN, variantBaseQualityStats.getMean());
+            metrics.put(VARIANT_BASE_QUALITY_MEDIAN, variantBaseQualityStats.getPercentile(50));
         }
 
-        if (mappingQualityStats.getN() > 0) {
-            metrics.put(VARIANT_MAPPING_QUALITY_MEAN, mappingQualityStats.getMean());
-            metrics.put(VARIANT_MAPPING_QUALITY_MEDIAN, mappingQualityStats.getPercentile(50));
+        if (variantMappingQualityStats.getN() > 0) {
+            metrics.put(VARIANT_MAPPING_QUALITY_MEAN, variantMappingQualityStats.getMean());
+            metrics.put(VARIANT_MAPPING_QUALITY_MEDIAN, variantMappingQualityStats.getPercentile(50));
         }
 
         if (variantMMQSStatistics.getN() > 0) {
             metrics.put(VARIANT_MMQS_MEAN, variantMMQSStatistics.getMean());
             metrics.put(VARIANT_MMQS_MEDIAN, variantMMQSStatistics.getPercentile(50));
+        }
+
+        if (variantDistanceToAlignmentEndStatistics.getN() > 0) {
+            metrics.put(DISTANCE_TO_ALIGNMENT_END_MEAN, variantDistanceToAlignmentEndStatistics.getMean());
+            metrics.put(DISTANCE_TO_ALIGNMENT_END_MEDIAN, variantDistanceToAlignmentEndStatistics.getPercentile(50));
+            metrics.put(DISTANCE_TO_ALIGNMENT_END_MAD,
+                    getMedianAbsoluteDeviation(variantDistanceToAlignmentEndStatistics));
         }
     }
 
@@ -490,6 +500,48 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         }
 
         return mmqs;
+    }
+
+    /**
+     * Computes the distance between the variant position with a read and the
+     * closest end of the aligned portion of the read.
+     *
+     * The distance is 1-based in that the smallest distance will be 1 where the
+     * position for the pileup element is either the first or the last aligned
+     * position.
+     *
+     * @param recordAndOffset
+     * @return
+     */
+    private int getDistanceToAlignmentEnd(RecordAndOffset recordAndOffset) {
+        int positionInRead = recordAndOffset.getOffset() + 1;
+
+        SAMRecord record = recordAndOffset.getRecord();
+
+        List<AlignmentBlock> alignmentBlocks = record.getAlignmentBlocks();
+
+        AlignmentBlock firstAlignmentBlock = alignmentBlocks.get(0);
+        int alignedStartPositionInRead = firstAlignmentBlock.getReadStart();
+
+        AlignmentBlock lastAlignmentBlock = alignmentBlocks.get(alignmentBlocks.size() - 1);
+        int alignedEndPositionInRead = lastAlignmentBlock.getReadStart() + lastAlignmentBlock.getLength() - 1;
+
+        return Math.min(positionInRead - alignedStartPositionInRead, alignedEndPositionInRead - positionInRead) + 1;
+    }
+
+    /**
+     * Calculates the median absolute deviation for the given statistics.
+     *
+     * @param statistics
+     * @return
+     */
+    private double getMedianAbsoluteDeviation(DescriptiveStatistics statistics) {
+        double median = statistics.getPercentile(50);
+        DescriptiveStatistics absoluteDeviations = new DescriptiveStatistics();
+        for (int i = 0; i < statistics.getN(); i++) {
+            absoluteDeviations.addValue(Math.abs(statistics.getElement(i) - median));
+        }
+        return absoluteDeviations.getPercentile(50);
     }
 
     /**
@@ -543,6 +595,9 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     private static final String VARIANT_MAPPING_QUALITY_MEDIAN = "VariantMapQualMedian";
     private static final String VARIANT_MMQS_MEAN = "VariantMMQS";
     private static final String VARIANT_MMQS_MEDIAN = "VariantMMQSMedian";
+    private static final String DISTANCE_TO_ALIGNMENT_END_MEAN = "DistanceToAlignmentEnd";
+    private static final String DISTANCE_TO_ALIGNMENT_END_MEDIAN = "DistanceToAlignmentEndMedian";
+    private static final String DISTANCE_TO_ALIGNMENT_END_MAD = "DistanceToAlignmentEndMAD";
 
     /**
      * Add header lines for the added INFO fields.
@@ -551,50 +606,57 @@ public class CalculateSnvMetrics extends CommandLineProgram {
      */
     private void addInfoHeaderLines(VCFHeader header) {
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(DEPTH, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(DEPTH, 1, VCFHeaderLineType.Integer,
                 "The number of reads covering the variant position including reads that fall below minimum base and mapping quality thresholds."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(DEPTH_CONTROL, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(DEPTH_CONTROL, 1, VCFHeaderLineType.Integer,
                 "The number of reads covering the variant position in the control sample(s) including reads that fall below minimum base and mapping quality thresholds."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(READ_COUNT, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(READ_COUNT, 1, VCFHeaderLineType.Integer,
                 "The number of reads covering the variant position excluding reads that fall below minimum base and mapping quality thresholds."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(READ_COUNT_CONTROL, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(READ_COUNT_CONTROL, 1, VCFHeaderLineType.Integer,
                 "The number of reads covering the variant position in the control sample(s) excluding reads that fall below minimum base and mapping quality thresholds."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(LOW_MAPPING_QUALITY, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(LOW_MAPPING_QUALITY, 1, VCFHeaderLineType.Float,
                 "The proportion of all reads from all samples at the variant position that have low mapping quality (less than "
                         + minimumMappingQuality + ")."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_COUNT, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_COUNT, 1, VCFHeaderLineType.Integer,
                 "The variant allele count, i.e. the number of reads supporting the variant allele."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_COUNT_CONTROL, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_COUNT_CONTROL, 1, VCFHeaderLineType.Integer,
                 "The variant allele count in the control sample(s)."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_FREQUENCY, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_FREQUENCY, 1, VCFHeaderLineType.Float,
                 "The variant allele frequency, i.e. the fraction of reads supporting the variant allele."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_FREQUENCY_CONTROL, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_ALLELE_FREQUENCY_CONTROL, 1, VCFHeaderLineType.Float,
                 "The variant allele frequency in the control sample(s)."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(STRAND_BIAS, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(STRAND_BIAS, 1, VCFHeaderLineType.Float,
                 "The strand bias for all reads covering the variant position."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_STRAND_BIAS, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_STRAND_BIAS, 1, VCFHeaderLineType.Float,
                 "The strand bias for variant-supporting reads."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(REFERENCE_STRAND_BIAS, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(REFERENCE_STRAND_BIAS, 1, VCFHeaderLineType.Float,
                 "The strand bias for reference-supporting reads."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_BASE_QUALITY_MEAN, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_BASE_QUALITY_MEAN, 1, VCFHeaderLineType.Float,
                 "The mean base quality at the variant position of variant reads."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_BASE_QUALITY_MEDIAN, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_BASE_QUALITY_MEDIAN, 1, VCFHeaderLineType.Float,
                 "The median base quality at the variant position of variant reads."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEAN, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEAN, 1, VCFHeaderLineType.Float,
                 "The mean mapping quality of variant reads."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEDIAN, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEDIAN, 1, VCFHeaderLineType.Float,
                 "The median mapping quality of variant reads."));
 
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEAN, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEAN, 1, VCFHeaderLineType.Float,
                 "The mean mismatch quality sum for variant reads."));
-        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEDIAN, 1, VCFHeaderLineType.String,
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEDIAN, 1, VCFHeaderLineType.Float,
                 "The median mismatch quality sum for variant reads."));
+
+        header.addMetaDataLine(new VCFInfoHeaderLine(DISTANCE_TO_ALIGNMENT_END_MEAN, 1, VCFHeaderLineType.Float,
+                "The mean shortest distance of the variant position within the read to either aligned end."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(DISTANCE_TO_ALIGNMENT_END_MEDIAN, 1, VCFHeaderLineType.Float,
+                "The median shortest distance of the variant position within the read to either aligned end."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(DISTANCE_TO_ALIGNMENT_END_MAD, 1, VCFHeaderLineType.Float,
+                "The median absolute deviation of the shortest distance of the variant position within the read to either aligned end."));
     }
 }
