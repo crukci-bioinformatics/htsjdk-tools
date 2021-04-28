@@ -16,12 +16,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.cruk.htsjdk.CommandLineProgram;
 import org.cruk.htsjdk.ProgressLogger;
 import org.cruk.htsjdk.pileup.Pileup;
 
+import htsjdk.samtools.AlignmentBlock;
+import htsjdk.samtools.SAMRecord;
 import htsjdk.samtools.SAMSequenceDictionary;
 import htsjdk.samtools.SamReader;
 import htsjdk.samtools.SamReaderFactory;
@@ -29,11 +32,14 @@ import htsjdk.samtools.ValidationStringency;
 import htsjdk.samtools.filter.DuplicateReadFilter;
 import htsjdk.samtools.filter.SamRecordFilter;
 import htsjdk.samtools.filter.SecondaryOrSupplementaryFilter;
+import htsjdk.samtools.reference.ReferenceSequenceFile;
+import htsjdk.samtools.reference.ReferenceSequenceFileFactory;
 import htsjdk.samtools.util.IOUtil;
 import htsjdk.samtools.util.Interval;
 import htsjdk.samtools.util.PeekableIterator;
 import htsjdk.samtools.util.SamLocusIterator.LocusInfo;
 import htsjdk.samtools.util.SamLocusIterator.RecordAndOffset;
+import htsjdk.samtools.util.SequenceUtil;
 import htsjdk.variant.variantcontext.VariantContext;
 import htsjdk.variant.variantcontext.VariantContextComparator;
 import htsjdk.variant.variantcontext.writer.VariantContextWriter;
@@ -67,6 +73,10 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             "--variants" }, required = true, description = "Input VCF file containing single nucleotide variants (required).")
     private File inputVcfFile;
 
+    @Option(names = { "-r",
+            "--reference-sequence" }, required = true, description = "Reference sequence FASTA file which must be indexed and have an accompanying dictionary (required).")
+    private File referenceSequenceFile;
+
     @Option(names = { "-o",
             "--output" }, required = true, description = "Output VCF file for which SNV metrics have been added as INFO fields (required).")
     private File outputVcfFile;
@@ -87,6 +97,8 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
     @Option(names = "--validation-stringency", description = "Validation stringency applied to the BAM file(s) (default: ${DEFAULT-VALUE}).")
     private ValidationStringency validationStringency = ValidationStringency.LENIENT;
+
+    private ReferenceSequenceFile referenceSequence;
 
     public static void main(String[] args) {
         int exitCode = new CommandLine(new CalculateSnvMetrics()).execute(args);
@@ -136,6 +148,26 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         snvs.sort(snvComparator);
         PeekableIterator<VariantContext> snvIterator = new PeekableIterator<>(snvs.iterator());
 
+        // reference sequence
+        referenceSequence = ReferenceSequenceFileFactory.getReferenceSequenceFile(referenceSequenceFile);
+        if (!referenceSequence.isIndexed()) {
+            logger.error("Reference sequence FASTA file is not indexed");
+            return 1;
+        }
+
+        // check sequence dictionary is consistent with the BAM file(s)
+        SAMSequenceDictionary dictionary = referenceSequence.getSequenceDictionary();
+        if (dictionary != null) {
+            if (!SequenceUtil.areSequenceDictionariesEqual(dictionary, sequenceDictionary)) {
+                if (validationStringency == ValidationStringency.LENIENT) {
+                    logger.warn("Reference sequence dictionary not consistent with BAM file");
+                } else if (validationStringency == ValidationStringency.STRICT) {
+                    logger.error("Reference sequence dictionary not consistent with BAM file");
+                    return 1;
+                }
+            }
+        }
+
         // metrics lookup
         Map<String, Map<String, Object>> metricsLookup = new HashMap<>();
 
@@ -174,6 +206,9 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         for (SamReader reader : samReaders) {
             reader.close();
         }
+        if (referenceSequence != null) {
+            referenceSequence.close();
+        }
 
         logger.info("Writing VCF file containing SNV metrics");
         writeVcf(metricsLookup);
@@ -190,6 +225,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             IOUtil.assertFileIsReadable(bamFile);
         }
         IOUtil.assertFileIsReadable(inputVcfFile);
+        IOUtil.assertFileIsReadable(referenceSequenceFile);
         IOUtil.assertFileIsWritable(outputVcfFile);
     }
 
@@ -255,8 +291,9 @@ public class CalculateSnvMetrics extends CommandLineProgram {
      * For multi-allelic variants, metrics are only calculated for the alternate
      * allele with the highest allele count.
      *
-     * @param snv    the SNV variant
-     * @param pileup the read pileup
+     * @param snv                   the SNV variant
+     * @param pileup                the read pileup
+     * @param referenceSequenceFile the reference sequence file
      * @return the computed SNV metrics
      */
     private Map<String, Object> calculateSnvMetrics(VariantContext snv, Pileup<RecordAndOffset> pileup) {
@@ -308,7 +345,6 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
         int variantReadCount = samplePileup.getBaseCount(variantAllele);
         metrics.put(VARIANT_ALLELE_COUNT, variantReadCount);
-
         if (readCount > 0) {
             metrics.put(VARIANT_ALLELE_FREQUENCY, variantReadCount / (double) readCount);
         }
@@ -316,35 +352,144 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         if (!controlSamples.isEmpty()) {
             int variantAlleleCountControl = referencePileup.getBaseCount(variantAllele);
             metrics.put(VARIANT_ALLELE_COUNT_CONTROL, variantAlleleCountControl);
-            if (readCount > 0) {
+            if (referenceReadCount > 0) {
                 metrics.put(VARIANT_ALLELE_FREQUENCY_CONTROL, variantAlleleCountControl / (double) referenceReadCount);
             }
         }
 
-        // strand bias metrics
-        Pileup<RecordAndOffset> negativeStrandPileup = samplePileup.getNegativeStrandPileup();
-        if (readCount > 0) {
-            double strandBias = negativeStrandPileup.size() / (double) readCount;
-            if (strandBias > 0.5)
-                strandBias = 1.0 - strandBias;
-            metrics.put(STRAND_BIAS, strandBias);
-        }
-        if (variantReadCount > 0) {
-            double variantStrandBias = negativeStrandPileup.getBaseCount(variantAllele) / (double) variantReadCount;
-            if (variantStrandBias > 0.5)
-                variantStrandBias = 1.0 - variantStrandBias;
-            metrics.put(VARIANT_STRAND_BIAS, variantStrandBias);
-        }
-        if (referenceReadCount > 0) {
-            Pileup<RecordAndOffset> referenceNegativeStrandPileup = referencePileup.getNegativeStrandPileup();
-            double referenceStrandBias = referenceNegativeStrandPileup.getBaseCount(referenceBase)
-                    / (double) referenceReadCount;
-            if (referenceStrandBias > 0.5)
-                referenceStrandBias = 1.0 - referenceStrandBias;
-            metrics.put(REFERENCE_STRAND_BIAS, referenceStrandBias);
-        }
+        calculateStrandBiasMetrics(variantAllele, referenceBase, samplePileup, referencePileup, metrics);
+
+        calculateVariantAlleleMetrics(variantAllele, samplePileup, metrics);
 
         return metrics;
+    }
+
+    /**
+     * Calculate strand bias metrics.
+     *
+     * @param variantAllele
+     * @param referenceBase
+     * @param samplePileup
+     * @param referencePileup
+     * @param metrics
+     */
+    private void calculateStrandBiasMetrics(byte variantAllele, byte referenceBase,
+            Pileup<RecordAndOffset> samplePileup, Pileup<RecordAndOffset> referencePileup,
+            Map<String, Object> metrics) {
+
+        Pileup<RecordAndOffset> negativeStrandPileup = samplePileup.getNegativeStrandPileup();
+
+        int sampleDepth = samplePileup.size();
+        if (sampleDepth > 0) {
+            double strandBias = negativeStrandPileup.size() / (double) sampleDepth;
+            if (strandBias > 0.5) {
+                strandBias = 1.0 - strandBias;
+            }
+            metrics.put(STRAND_BIAS, strandBias);
+        }
+
+        int variantReadCount = samplePileup.getBaseCount(variantAllele);
+        if (variantReadCount > 0) {
+            double variantStrandBias = negativeStrandPileup.getBaseCount(variantAllele) / (double) variantReadCount;
+            if (variantStrandBias > 0.5) {
+                variantStrandBias = 1.0 - variantStrandBias;
+            }
+            metrics.put(VARIANT_STRAND_BIAS, variantStrandBias);
+        }
+
+        int referenceDepth = referencePileup.size();
+        if (referenceDepth > 0) {
+            Pileup<RecordAndOffset> referenceNegativeStrandPileup = referencePileup.getNegativeStrandPileup();
+            double referenceStrandBias = referenceNegativeStrandPileup.getBaseCount(referenceBase)
+                    / (double) referenceDepth;
+            if (referenceStrandBias > 0.5) {
+                referenceStrandBias = 1.0 - referenceStrandBias;
+            }
+            metrics.put(REFERENCE_STRAND_BIAS, referenceStrandBias);
+        }
+    }
+
+    /**
+     * Calculate metrics for reads with the variant allele.
+     *
+     * @param variantAllele
+     * @param pileup
+     * @param metrics
+     */
+    private void calculateVariantAlleleMetrics(byte variantAllele, Pileup<RecordAndOffset> pileup,
+            Map<String, Object> metrics) {
+        DescriptiveStatistics baseQualityStats = new DescriptiveStatistics();
+        DescriptiveStatistics mappingQualityStats = new DescriptiveStatistics();
+        DescriptiveStatistics variantMMQSStatistics = new DescriptiveStatistics();
+
+        Pileup<RecordAndOffset> variantAllelePileup = pileup.getBaseFilteredPileup(variantAllele);
+        for (RecordAndOffset recordAndOffset : variantAllelePileup) {
+            baseQualityStats.addValue(recordAndOffset.getBaseQuality());
+            mappingQualityStats.addValue(recordAndOffset.getRecord().getMappingQuality());
+            variantMMQSStatistics.addValue(getMismatchQualitySum(recordAndOffset));
+        }
+
+        if (baseQualityStats.getN() > 0) {
+            metrics.put(VARIANT_BASE_QUALITY_MEAN, baseQualityStats.getMean());
+            metrics.put(VARIANT_BASE_QUALITY_MEDIAN, baseQualityStats.getPercentile(50));
+        }
+
+        if (mappingQualityStats.getN() > 0) {
+            metrics.put(VARIANT_MAPPING_QUALITY_MEAN, mappingQualityStats.getMean());
+            metrics.put(VARIANT_MAPPING_QUALITY_MEDIAN, mappingQualityStats.getPercentile(50));
+        }
+
+        if (variantMMQSStatistics.getN() > 0) {
+            metrics.put(VARIANT_MMQS_MEAN, variantMMQSStatistics.getMean());
+            metrics.put(VARIANT_MMQS_MEDIAN, variantMMQSStatistics.getPercentile(50));
+        }
+    }
+
+    /**
+     * Gets the mismatch quality sum for the given read alignment and offset.
+     *
+     * The mismatch quality sum is the sum of base qualities for positions in the
+     * read that align with a mismatch to the reference sequence excluding the
+     * offset position at which there is a possible variant.
+     *
+     * @param recordAndOffset
+     * @return
+     */
+    private int getMismatchQualitySum(RecordAndOffset recordAndOffset) {
+
+        int offset = recordAndOffset.getOffset();
+
+        SAMRecord record = recordAndOffset.getRecord();
+
+        byte[] readBases = record.getReadBases();
+        byte[] baseQualities = record.getBaseQualities();
+
+        int alignmentStart = record.getAlignmentStart();
+        int alignmentEnd = record.getAlignmentEnd();
+
+        byte[] referenceBases = referenceSequence
+                .getSubsequenceAt(record.getReferenceName(), alignmentStart, alignmentEnd).getBases();
+
+        int mmqs = 0;
+
+        for (AlignmentBlock block : record.getAlignmentBlocks()) {
+            int readBlockStart = block.getReadStart() - 1;
+            int referenceStart = block.getReferenceStart();
+            int referenceBlockStart = referenceStart - alignmentStart;
+            for (int i = 0; i < block.getLength(); i++) {
+                if ((readBlockStart + i) == offset) {
+                    continue;
+                }
+                byte referenceBase = referenceBases[referenceBlockStart + i];
+                byte readBase = readBases[readBlockStart + i];
+                if (!SequenceUtil.isNoCall(readBase) && !SequenceUtil.isNoCall(referenceBase)
+                        && !SequenceUtil.basesEqual(readBase, referenceBase)) {
+                    mmqs += baseQualities[readBlockStart + i];
+                }
+            }
+        }
+
+        return mmqs;
     }
 
     /**
@@ -392,6 +537,12 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     private static final String STRAND_BIAS = "StrandBias";
     private static final String VARIANT_STRAND_BIAS = "VariantStrandBias";
     private static final String REFERENCE_STRAND_BIAS = "ReferenceStrandBias";
+    private static final String VARIANT_BASE_QUALITY_MEAN = "VariantBaseQual";
+    private static final String VARIANT_BASE_QUALITY_MEDIAN = "VariantBaseQualMedian";
+    private static final String VARIANT_MAPPING_QUALITY_MEAN = "VariantMapQual";
+    private static final String VARIANT_MAPPING_QUALITY_MEDIAN = "VariantMapQualMedian";
+    private static final String VARIANT_MMQS_MEAN = "VariantMMQS";
+    private static final String VARIANT_MMQS_MEDIAN = "VariantMMQSMedian";
 
     /**
      * Add header lines for the added INFO fields.
@@ -431,7 +582,19 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         header.addMetaDataLine(new VCFInfoHeaderLine(REFERENCE_STRAND_BIAS, 1, VCFHeaderLineType.String,
                 "The strand bias for reference-supporting reads."));
 
-        // header.addMetaDataLine(new VCFInfoHeaderLine(ANNOTATION, 1,
-        // VCFHeaderLineType.String, ""));
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_BASE_QUALITY_MEAN, 1, VCFHeaderLineType.String,
+                "The mean base quality at the variant position of variant reads."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_BASE_QUALITY_MEDIAN, 1, VCFHeaderLineType.String,
+                "The median base quality at the variant position of variant reads."));
+
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEAN, 1, VCFHeaderLineType.String,
+                "The mean mapping quality of variant reads."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEDIAN, 1, VCFHeaderLineType.String,
+                "The median mapping quality of variant reads."));
+
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEAN, 1, VCFHeaderLineType.String,
+                "The mean mismatch quality sum for variant reads."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEDIAN, 1, VCFHeaderLineType.String,
+                "The median mismatch quality sum for variant reads."));
     }
 }
