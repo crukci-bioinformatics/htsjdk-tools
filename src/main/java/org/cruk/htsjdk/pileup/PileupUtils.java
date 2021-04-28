@@ -201,4 +201,23 @@ public class PileupUtils {
         }
         return filteredPileup;
     }
+
+    /**
+     * Filters a list of RecordAndOffset objects retaining only those for reads
+     * which align to the negative (or reverse) strand.
+     *
+     * @param pileup list of RecordAndOffset objects
+     * @return filtered list of RecordAndOffset objects
+     */
+    public static <T extends AbstractRecordAndOffset> List<T> filterNegativeStrand(List<T> pileup) {
+        List<T> filteredPileup = new ArrayList<>();
+        for (T recordAndOffset : pileup) {
+            SAMRecord record = recordAndOffset.getRecord();
+            if (record.getReadNegativeStrandFlag()) {
+                filteredPileup.add(recordAndOffset);
+            }
+        }
+        return filteredPileup;
+    }
+
 }
