@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang3.ArrayUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -65,6 +66,39 @@ import picocli.CommandLine.Option;
 public class CalculateSnvMetrics extends CommandLineProgram {
 
     private static final Logger logger = LogManager.getLogger();
+
+    // metric names
+    private static final String DEPTH = "Depth";
+    private static final String DEPTH_CONTROL = "DepthControl";
+    private static final String LOW_MAPPING_QUALITY = "LowMapQual";
+    private static final String READ_COUNT = "ReadCount";
+    private static final String READ_COUNT_CONTROL = "ReadCountControl";
+    private static final String VARIANT_ALLELE_COUNT = "VariantAlleleCount";
+    private static final String VARIANT_ALLELE_COUNT_CONTROL = "VariantAlleleCountControl";
+    private static final String VARIANT_ALLELE_FREQUENCY = "VariantAlleleFrequency";
+    private static final String VARIANT_ALLELE_FREQUENCY_CONTROL = "VariantAlleleFrequencyControl";
+    private static final String STRAND_BIAS = "StrandBias";
+    private static final String VARIANT_STRAND_BIAS = "VariantStrandBias";
+    private static final String REFERENCE_STRAND_BIAS = "ReferenceStrandBias";
+    private static final String VARIANT_BASE_QUALITY_MEAN = "VariantBaseQual";
+    private static final String VARIANT_BASE_QUALITY_MEDIAN = "VariantBaseQualMedian";
+    private static final String VARIANT_MAPPING_QUALITY_MEAN = "VariantMapQual";
+    private static final String VARIANT_MAPPING_QUALITY_MEDIAN = "VariantMapQualMedian";
+    private static final String MAPPING_QUALITY_MEAN_DIFFERENCE = "MapQualDiff";
+    private static final String MAPPING_QUALITY_MEDIAN_DIFFERENCE = "MapQualDiffMedian";
+    private static final String VARIANT_MMQS_MEAN = "VariantMMQS";
+    private static final String VARIANT_MMQS_MEDIAN = "VariantMMQSMedian";
+    private static final String MMQS_MEAN_DIFFERENCE = "MMQSDiff";
+    private static final String MMQS_MEDIAN_DIFFERENCE = "MMQSDiffMedian";
+    private static final String DISTANCE_TO_ALIGNMENT_END_MEAN = "DistanceToAlignmentEnd";
+    private static final String DISTANCE_TO_ALIGNMENT_END_MEDIAN = "DistanceToAlignmentEndMedian";
+    private static final String DISTANCE_TO_ALIGNMENT_END_MAD = "DistanceToAlignmentEndMAD";
+    private static final String HOMOPOLYMER_LENGTH = "HomopolymerLength";
+    private static final String REPEAT_LENGTH = "Repeat";
+
+    // upper limits for repeat and homopolymer lengths to detect
+    private static final int MAX_HOMOPOLYMER_LENGTH = 50;
+    private static final int MAX_REPEAT_LENGTH = 30;
 
     @Option(names = { "-i",
             "--input" }, required = true, description = "Input BAM file(s) which must be in coordinate sort order and indexed (required).")
@@ -175,6 +209,10 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         while (mergingSamLocusIterator.hasNext()) {
             LocusInfo locusInfo = mergingSamLocusIterator.next();
 
+            String contig = locusInfo.getContig();
+            int position = locusInfo.getPosition();
+            byte[] referenceBases = referenceSequence.getSubsequenceAt(contig, position, position).getBases();
+
             Pileup<RecordAndOffset> pileup = new Pileup<>(locusInfo.getRecordAndOffsets());
 
             boolean foundMatchingSnv = false;
@@ -183,6 +221,11 @@ public class CalculateSnvMetrics extends CommandLineProgram {
                 foundMatchingSnv = true;
 
                 VariantContext snv = snvIterator.next();
+
+                if (!snv.getReference().basesMatch(referenceBases)) {
+                    logger.error("Mismatching reference base for " + getSnvId(snv));
+                    return 1;
+                }
 
                 String id = getSnvId(snv);
 
@@ -299,6 +342,9 @@ public class CalculateSnvMetrics extends CommandLineProgram {
      */
     private Map<String, Object> calculateSnvMetrics(VariantContext snv, Pileup<RecordAndOffset> pileup) {
 
+        String chromosome = snv.getContig();
+        int position = snv.getStart();
+
         Map<String, Object> metrics = new HashMap<>();
 
         byte referenceBase = snv.getReference().getBases()[0];
@@ -367,6 +413,9 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         calculateMismatchBaseQualityMetrics(variantReadPileup, referenceReadPileup, metrics);
         calculateMappingQualityMetrics(variantReadPileup, referenceReadPileup, metrics);
         calculateDistanceToAlignmentEndMetrics(variantReadPileup, metrics);
+
+        metrics.put(HOMOPOLYMER_LENGTH, getHomopolymerLength(chromosome, position));
+        metrics.put(REPEAT_LENGTH, getRepeatLength(chromosome, position));
 
         return metrics;
     }
@@ -494,7 +543,10 @@ public class CalculateSnvMetrics extends CommandLineProgram {
             metrics.put(VARIANT_MAPPING_QUALITY_MEAN, variantMappingQualityStats.getMean());
             metrics.put(VARIANT_MAPPING_QUALITY_MEDIAN, variantMappingQualityStats.getPercentile(50));
             if (referenceMappingQualityStats.getN() > 0) {
-                // TODO
+                metrics.put(MAPPING_QUALITY_MEAN_DIFFERENCE,
+                        referenceMappingQualityStats.getMean() - variantMappingQualityStats.getMean());
+                metrics.put(MAPPING_QUALITY_MEDIAN_DIFFERENCE,
+                        referenceMappingQualityStats.getPercentile(50) - variantMappingQualityStats.getPercentile(50));
             }
         }
     }
@@ -597,6 +649,137 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     }
 
     /**
+     * Returns the length of the longest homopolymer adjacent to or surrounding the
+     * given position.
+     *
+     * @param chromosome
+     * @param position
+     * @return
+     */
+    private int getHomopolymerLength(String chromosome, long position) {
+        int referenceLength = referenceSequence.getSequenceDictionary().getSequence(chromosome).getSequenceLength();
+
+        byte[] referenceBases = referenceSequence
+                .getSubsequenceAt(chromosome, position, Math.min(referenceLength, position + MAX_HOMOPOLYMER_LENGTH))
+                .getBases();
+        byte referenceBase = referenceBases[0];
+        byte rightBase = 0;
+        int rightCount = 0;
+        if (referenceBases.length > 1) {
+            rightBase = referenceBases[1];
+            rightCount = 1;
+            for (int i = 2; i < referenceBases.length; i++) {
+                if (!SequenceUtil.basesEqual(rightBase, referenceBases[i]))
+                    break;
+                rightCount++;
+            }
+            if (SequenceUtil.basesEqual(rightBase, referenceBase))
+                rightCount++;
+        }
+
+        referenceBases = referenceSequence
+                .getSubsequenceAt(chromosome, Math.max(1, position - MAX_HOMOPOLYMER_LENGTH), position).getBases();
+        byte leftBase = 0;
+        int leftCount = 0;
+        if (referenceBases.length > 1) {
+            leftBase = referenceBases[referenceBases.length - 2];
+            leftCount = 1;
+            for (int i = referenceBases.length - 3; i >= 0; i--) {
+                if (!SequenceUtil.basesEqual(leftBase, referenceBases[i]))
+                    break;
+                leftCount++;
+            }
+            if (SequenceUtil.basesEqual(leftBase, referenceBase))
+                leftCount++;
+        }
+
+        if (leftCount > 0 && rightCount > 0 && SequenceUtil.basesEqual(leftBase, referenceBase)
+                && SequenceUtil.basesEqual(rightBase, referenceBase)) {
+            return leftCount + rightCount - 1;
+        } else {
+            return Math.max(leftCount, rightCount);
+        }
+    }
+
+    /**
+     * Returns the length of repetitive sequence adjacent to the variant position
+     * where repeats can be 1-, 2-, 3- or 4-mers.
+     *
+     * @param chromosome
+     * @param position
+     * @return
+     */
+    private int getRepeatLength(String chromosome, long position) {
+        int repeat1 = getRepeatCount(1, chromosome, position);
+        int repeat2 = getRepeatCount(2, chromosome, position);
+        int repeat3 = getRepeatCount(3, chromosome, position);
+        int repeat4 = getRepeatCount(4, chromosome, position);
+
+        int repeat = 0;
+        if (repeat1 > 1 || repeat2 > 1 || repeat3 > 1 || repeat4 > 1) {
+            repeat = Math.max(repeat1, repeat2 * 2);
+            repeat = Math.max(repeat, repeat3 * 3);
+            repeat = Math.max(repeat, repeat4 * 4);
+        }
+
+        return repeat;
+    }
+
+    /**
+     * Returns the maximum number of repeats of the specified length adjacent to the
+     * given position.
+     *
+     * @param n          the repeat length, e.g. n = 2 for dinucleotide repeats
+     * @param chromosome
+     * @param position
+     * @return
+     */
+    private int getRepeatCount(int n, String chromosome, long position) {
+        int referenceLength = referenceSequence.getSequenceDictionary().getSequence(chromosome).getSequenceLength();
+
+        int count = 0;
+
+        if (position < referenceLength) {
+            byte[] referenceBases = referenceSequence
+                    .getSubsequenceAt(chromosome, position + 1, Math.min(referenceLength, position + MAX_REPEAT_LENGTH))
+                    .getBases();
+            count = Math.max(count, getRepeatCount(n, referenceBases));
+        }
+
+        if (position > 1) {
+            byte[] referenceBases = referenceSequence
+                    .getSubsequenceAt(chromosome, Math.max(1, position - MAX_REPEAT_LENGTH), position - 1).getBases();
+            ArrayUtils.reverse(referenceBases);
+            count = Math.max(count, getRepeatCount(n, referenceBases));
+        }
+
+        return count;
+    }
+
+    /**
+     * Returns the number of repeats of length n in the given sequence.
+     *
+     * @param n     the repeat length, e.g. n = 2 for dinucleotide repeats
+     * @param bases
+     * @return
+     */
+    private int getRepeatCount(int n, byte[] bases) {
+        if (bases.length < n)
+            return 0;
+        int count = 1;
+        while (true) {
+            int pos = count * n;
+            if ((pos + n) > bases.length)
+                return count;
+            for (int i = 0; i < n; i++, pos++) {
+                if (bases[i] != bases[pos])
+                    return count;
+            }
+            count++;
+        }
+    }
+
+    /**
      * Calculates the median absolute deviation for the given statistics.
      *
      * @param statistics
@@ -643,30 +826,6 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         writer.close();
         reader.close();
     }
-
-    private static final String DEPTH = "Depth";
-    private static final String DEPTH_CONTROL = "DepthControl";
-    private static final String LOW_MAPPING_QUALITY = "LowMapQual";
-    private static final String READ_COUNT = "ReadCount";
-    private static final String READ_COUNT_CONTROL = "ReadCountControl";
-    private static final String VARIANT_ALLELE_COUNT = "VariantAlleleCount";
-    private static final String VARIANT_ALLELE_COUNT_CONTROL = "VariantAlleleCountControl";
-    private static final String VARIANT_ALLELE_FREQUENCY = "VariantAlleleFrequency";
-    private static final String VARIANT_ALLELE_FREQUENCY_CONTROL = "VariantAlleleFrequencyControl";
-    private static final String STRAND_BIAS = "StrandBias";
-    private static final String VARIANT_STRAND_BIAS = "VariantStrandBias";
-    private static final String REFERENCE_STRAND_BIAS = "ReferenceStrandBias";
-    private static final String VARIANT_BASE_QUALITY_MEAN = "VariantBaseQual";
-    private static final String VARIANT_BASE_QUALITY_MEDIAN = "VariantBaseQualMedian";
-    private static final String VARIANT_MAPPING_QUALITY_MEAN = "VariantMapQual";
-    private static final String VARIANT_MAPPING_QUALITY_MEDIAN = "VariantMapQualMedian";
-    private static final String VARIANT_MMQS_MEAN = "VariantMMQS";
-    private static final String VARIANT_MMQS_MEDIAN = "VariantMMQSMedian";
-    private static final String MMQS_MEAN_DIFFERENCE = "MMQSDiff";
-    private static final String MMQS_MEDIAN_DIFFERENCE = "MMQSDiffMedian";
-    private static final String DISTANCE_TO_ALIGNMENT_END_MEAN = "DistanceToAlignmentEnd";
-    private static final String DISTANCE_TO_ALIGNMENT_END_MEDIAN = "DistanceToAlignmentEndMedian";
-    private static final String DISTANCE_TO_ALIGNMENT_END_MAD = "DistanceToAlignmentEndMAD";
 
     /**
      * Add header lines for the added INFO fields.
@@ -716,6 +875,11 @@ public class CalculateSnvMetrics extends CommandLineProgram {
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MAPPING_QUALITY_MEDIAN, 1, VCFHeaderLineType.Float,
                 "The median mapping quality of variant reads."));
 
+        header.addMetaDataLine(new VCFInfoHeaderLine(MAPPING_QUALITY_MEAN_DIFFERENCE, 1, VCFHeaderLineType.Float,
+                "The difference in the mean mapping quality of variant and reference reads."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(MAPPING_QUALITY_MEDIAN_DIFFERENCE, 1, VCFHeaderLineType.Float,
+                "The difference in the median mapping quality of variant and reference reads."));
+
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEAN, 1, VCFHeaderLineType.Float,
                 "The mean mismatch quality sum for variant reads."));
         header.addMetaDataLine(new VCFInfoHeaderLine(VARIANT_MMQS_MEDIAN, 1, VCFHeaderLineType.Float,
@@ -732,5 +896,10 @@ public class CalculateSnvMetrics extends CommandLineProgram {
                 "The median shortest distance of the variant position within the read to either aligned end."));
         header.addMetaDataLine(new VCFInfoHeaderLine(DISTANCE_TO_ALIGNMENT_END_MAD, 1, VCFHeaderLineType.Float,
                 "The median absolute deviation of the shortest distance of the variant position within the read to either aligned end."));
+
+        header.addMetaDataLine(new VCFInfoHeaderLine(HOMOPOLYMER_LENGTH, 1, VCFHeaderLineType.Integer,
+                "The longest continuous homopolymer surrounding or adjacent to the variant position."));
+        header.addMetaDataLine(new VCFInfoHeaderLine(REPEAT_LENGTH, 1, VCFHeaderLineType.Integer,
+                "The length of repetitive sequence adjacent to the variant position where repeats can be 1-, 2-, 3- or 4-mers."));
     }
 }
