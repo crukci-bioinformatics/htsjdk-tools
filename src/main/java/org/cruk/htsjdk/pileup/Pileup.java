@@ -13,6 +13,7 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,7 +22,15 @@ import htsjdk.samtools.SAMRecord;
 import htsjdk.samtools.util.AbstractRecordAndOffset;
 import htsjdk.samtools.util.SequenceUtil;
 
-public class Pileup<T extends AbstractRecordAndOffset> {
+/**
+ * Class representing the pileup of reads at a given locus as returned by e.g.
+ * htsjdk.samtools.util.SamLocusIterator.LocusInfo.getRecordAndOffsets().
+ *
+ * No checks are made that the elements all refer to the same locus.
+ *
+ * @param <T> the base type of elements in the pileup
+ */
+public class Pileup<T extends AbstractRecordAndOffset> implements Iterable<T> {
 
     public static final byte[] VALID_BASES = new byte[] { 'A', 'C', 'G', 'T', 'N' };
 
@@ -251,5 +260,27 @@ public class Pileup<T extends AbstractRecordAndOffset> {
             }
         }
         return filteredPileup;
+    }
+
+    /**
+     * Returns a filtered pileup containing reads that have the given base at the
+     * locus.
+     *
+     * @param base the base
+     * @return the filtered pileup
+     */
+    public Pileup<T> getBaseFilteredPileup(byte base) {
+        Pileup<T> filteredPileup = new Pileup<T>();
+        for (T element : elements) {
+            if (element.getReadBase() == base) {
+                filteredPileup.addElement(element);
+            }
+        }
+        return filteredPileup;
+    }
+
+    @Override
+    public Iterator<T> iterator() {
+        return elements.iterator();
     }
 }
