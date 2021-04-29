@@ -103,6 +103,10 @@
                     </platforms>
                     <programs>
                         <program>
+                            <mainClass>org.cruk.htsjdk.metrics.CalculateSnvMetrics</mainClass>
+                            <id>calculate-snv-metrics</id>
+                        </program>
+                        <program>
                             <mainClass>org.cruk.htsjdk.pileup.PileupCounts</mainClass>
                             <id>pileup-counts</id>
                         </program>
