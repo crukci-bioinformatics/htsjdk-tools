@@ -63,7 +63,7 @@ parameter settings that are available are listed by running the tool with the
 
         pileup-counts --help
 
-## Calculating SNV metrics (`calculate-snv-metrics` tool)
+## SNV metrics
 
 The `calculate-snv-metrics` utility computes various metrics for single
 nucleotide variants (SNVs) from a given VCF file based on the variant-supporting
@@ -143,3 +143,78 @@ DistanceToAlignmentEndMAD | The median absolute deviation of the shortest distan
 HomopolymerLength | The longest continuous homopolymer surrounding or adjacent to the variant position.
 Repeat | The length of repetitive sequence adjacent to the variant position where repeats can be 1-, 2-, 3- or 4-mers.
 
+### Filtering based on SNV metrics
+
+The VariantFiltration tool from [GATK](https://gatk.broadinstitute.org) can be
+used to filter variants based on the SNV metrics computed using
+`calculate-snv-metrics`.
+
+Based on alignment with BWA MEM for whole genome sequencing datasets, the
+following filters are recommended for MuTect2 and Strelka variant callers.
+
+These filters have been tuned using the ICGC benchmark datasets from Alioto et
+al., Nature Commun. 2015, 6:10001 (http://www.ncbi.nlm.nih.gov/pubmed/26647970)
+and tested on synthetic datasets from the ICGC-TCGA DREAM Mutation Calling
+challenge (https://www.synapse.org/#!Synapse:syn312572).
+
+MuTect2 filters (more stringent for higher precision):
+
+    gatk VariantFiltration \
+    	--variant snv.metrics.vcf \
+    	--output snv.filtered.vcf \
+	    --filter-name VariantAlleleCount \
+    	--filter-expression "VariantAlleleCount < 4" \
+	    --filter-name VariantAlleleCountControl \
+	    --filter-expression "VariantAlleleCountControl > 1" \
+    	--filter-name VariantMapQualMedian \
+    	--filter-expression "VariantMapQualMedian < 40.0" \
+    	--filter-name MapQualDiffMedian \
+    	--filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
+    	--filter-name LowMapQual \
+    	--filter-expression "LowMapQual > 0.05" \
+    	--filter-name VariantBaseQualMedian \
+    	--filter-expression "VariantBaseQualMedian < 30.0" \
+    	--filter-name StrandBias \
+    	--filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
+
+MuTect2 filters (less stringent for higher recall at expense of precision):
+
+    gatk VariantFiltration \
+    	--variant snv.metrics.vcf \
+    	--output snv.filtered.vcf \
+        --filter-name VariantAlleleCount \
+        --filter-expression "VariantAlleleCount < 3" \
+        --filter-name VariantAlleleCountControl \
+        --filter-expression "VariantAlleleCountControl > 1" \
+        --filter-name VariantMapQualMedian \
+        --filter-expression "VariantMapQualMedian < 40.0" \
+        --filter-name MapQualDiffMedian \
+        --filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
+        --filter-name LowMapQual \
+        --filter-expression "LowMapQual > 0.05" \
+        --filter-name VariantBaseQualMedian \
+        --filter-expression "VariantBaseQualMedian < 25.0"
+
+Strelka filters (includes position in read filter):
+
+    gatk VariantFiltration \
+    	--variant snv.metrics.vcf \
+    	--output snv.filtered.vcf \
+	    --filter-name VariantAlleleCount \
+    	--filter-expression "VariantAlleleCount < 4" \
+	    --filter-name VariantAlleleCountControl \
+	    --filter-expression "VariantAlleleCountControl > 1" \
+    	--filter-name VariantMapQualMedian \
+    	--filter-expression "VariantMapQualMedian < 40.0" \
+    	--filter-name MapQualDiffMedian \
+    	--filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
+    	--filter-name LowMapQual \
+    	--filter-expression "LowMapQual > 0.05" \
+    	--filter-name VariantBaseQualMedian \
+    	--filter-expression "VariantBaseQualMedian < 30.0" \
+    	--filter-name StrandBias \
+    	--filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
+        --filter-name DistanceToAlignmentEndMedian \
+        --filter-expression "DistanceToAlignmentEndMedian < 10.0" \
+        --filter-name DistanceToAlignmentEndMAD \
+        --filter-expression "DistanceToAlignmentEndMAD < 3.0"
