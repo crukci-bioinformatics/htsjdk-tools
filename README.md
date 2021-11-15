@@ -62,3 +62,84 @@ parameter settings that are available are listed by running the tool with the
 `--help` argument, e.g.
 
         pileup-counts --help
+
+## Calculating SNV metrics (`calculate-snv-metrics` tool)
+
+The `calculate-snv-metrics` utility computes various metrics for single
+nucleotide variants (SNVs) from a given VCF file based on the variant-supporting
+and reference sequence reads within the specified input BAM file(s).
+
+Values for the metrics computed are added to the INFO column of the output VCF
+file.
+
+Usage example:
+
+        calculate-snv-metrics \
+          --reference-sequence homo_sapiens.fa \
+          --variants snv.vcf \
+          --input my.bam
+          --output snv.metrics.vcf
+
+This will annotate the SNV variants within the input VCF file, `snv.vcf`, based
+on reads within the input BAM file. Each of the various SNV metrics are
+described below.
+
+Some metrics are computed from variant-supporting reads and others for reads in
+which the base aligned matches the reference sequence. The tool allows for
+filtering of reads used in computing these metrics based on the sample
+identifier in the SM tag within the SAM record. This can be useful when
+calculating metrics for somatic variant calls from cancer genome sequencing
+where both the tumour sample and a matched normal were sequenced. In this
+scenario, the metrics for variant-supporting reads can be restricted to just the
+sequence data from the tumour sample while the metrics for reference sequence
+reads can be calculated solely for data from the matched normal sample by
+specifying the SM identifiers for each using `--sample` and `--control-sample`
+options.
+
+        calculate-snv-metrics \
+          --reference-sequence homo_sapiens.fa \
+          --variants snv.vcf \
+          --input tumour.bam \
+          --input control.bam \
+          --sample tumour123 \
+          --control-sample control123 \
+          --minimum-mapping-quality 1 \
+          --minimum-base-quality 10 \
+          --output snv.metrics.vcf
+
+Two input BAM files are provided in this scenario for somatic variant calling,
+one for the tumour sample and the other for the matched normal (control) sample,
+but `calculate-snv-metrics` using the SM tags to determine which reads to use
+for each metric. Multiple sample identifiers can be specified if necessary.
+
+The following metrics are computed for each SNV:
+
+Metric | Description
+-------|------------
+Depth |The number of reads covering the variant position including duplicates and reads that fall below minimum base and mapping quality thresholds.
+ReadCount | The number of reads covering the variant position excluding duplicates and reads that fall below minimum base and mapping quality thresholds.
+VariantAlleleCount | The variant allele count, i.e. the number of reads supporting the variant allele.
+VariantAlleleFrequency | The variant allele frequency, i.e. the fraction of reads supporting the variant allele.
+DepthControl | The number of reads covering the variant position in the control sample(s) including duplicates and reads that fall below minimum base and mapping quality thresholds
+ReadCountControl | The number of reads covering the variant position in the control sample(s) excluding duplicates and reads that fall below minimum base and mapping quality thresholds.
+VariantAlleleCountControl | The variant allele count in the control sample(s).
+StrandBias | The strand bias for all reads covering the variant position.
+VariantStrandBias | The strand bias for variant-supporting reads.
+ReferenceStrandBias | The strand bias for reference-supporting reads.
+LowMapQual | The proportion of all reads from all samples at the variant position that have low mapping quality (less than the specified minimumMappingQuality).
+VariantBaseQual | The mean base quality at the variant position of variant reads.
+VariantBaseQualMedian | The median base quality at the variant position of variant reads.
+VariantMapQual | The mean mapping quality of variant reads.
+VariantMapQualMedian | The median mapping quality of variant reads.
+MapQualDiff | The difference in the mean mapping quality of variant and reference reads.
+MapQualDiffMedian | The difference in the median mapping quality of variant and reference reads.
+VariantMMQS | The mean mismatch quality sum for variant reads.
+VariantMMQSMedian | The median mismatch quality sum for variant reads.
+MMQSDiff | The difference in mean mismatch quality sum of variant and reference reads.
+MMQSDiffMedian | The difference in median mismatch quality sum of variant and reference reads.
+DistanceToAlignmentEnd | The mean shortest distance of the variant position within the read to either aligned end.
+DistanceToAlignmentEndMedian | The median shortest distance of the variant position within the read to either aligned end.
+DistanceToAlignmentEndMAD | The median absolute deviation of the shortest distance of the variant position within the read to either aligned end.
+HomopolymerLength | The longest continuous homopolymer surrounding or adjacent to the variant position.
+Repeat | The length of repetitive sequence adjacent to the variant position where repeats can be 1-, 2-, 3- or 4-mers.
+
