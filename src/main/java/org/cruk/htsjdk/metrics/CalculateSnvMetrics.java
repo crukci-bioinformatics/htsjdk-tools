@@ -119,7 +119,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     @Option(names = "--sample", description = ".The sample(s) for which to compute SNV metrics. Can be specified multiple times for multiple samples; used to restrict the reads used in computing metrics, if not specified metrics are computed from all reads within the given BAM files (optional).")
     private HashSet<String> samples;
 
-    @Option(names = "--control_sample", description = "The sample(s) for which to compute SNV metrics for the reference allele. Can be specified multiple times for multiple samples; if not specified metrics will be computed for all reference-supporting reads in the samples specified using the sample argument (optional).")
+    @Option(names = "--control-sample", description = "The sample(s) for which to compute SNV metrics for the reference allele. Can be specified multiple times for multiple samples; if not specified metrics will be computed for all reference-supporting reads in the samples specified using the sample argument (optional).")
     private HashSet<String> controlSamples;
 
     @Option(names = { "-q",
