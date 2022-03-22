@@ -90,9 +90,10 @@ public class AddUmiTags extends CommandLineProgram {
         SamReader reader = SamReaderFactory.makeDefault().validationStringency(validationStringency).open(inputBamFile);
 
         boolean sorted = reader.getFileHeader().getSortOrder() == SAMFileHeader.SortOrder.coordinate;
+        // logger.info("Sort order: " + reader.getFileHeader().getSortOrder());
 
         SAMFileWriter writer = new SAMFileWriterFactory().setCreateIndex(sorted)
-                .makeSAMOrBAMWriter(reader.getFileHeader(), sorted, outputBamFile);
+                .makeSAMOrBAMWriter(reader.getFileHeader(), true, outputBamFile);
 
         SAMRecordIterator iterator = reader.iterator();
 
