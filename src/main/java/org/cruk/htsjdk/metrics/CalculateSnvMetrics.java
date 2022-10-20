@@ -117,10 +117,10 @@ public class CalculateSnvMetrics extends CommandLineProgram {
     private File outputVcfFile;
 
     @Option(names = "--sample", description = ".The sample(s) for which to compute SNV metrics. Can be specified multiple times for multiple samples; used to restrict the reads used in computing metrics, if not specified metrics are computed from all reads within the given BAM files (optional).")
-    private HashSet<String> samples;
+    private HashSet<String> samples = new HashSet<String>();
 
     @Option(names = "--control-sample", description = "The sample(s) for which to compute SNV metrics for the reference allele. Can be specified multiple times for multiple samples; if not specified metrics will be computed for all reference-supporting reads in the samples specified using the sample argument (optional).")
-    private HashSet<String> controlSamples;
+    private HashSet<String> controlSamples = new HashSet<String>();
 
     @Option(names = { "-q",
             "--minimum-base-quality" }, description = "Minimum base quality for the base call at a locus for reads to be included (default: ${DEFAULT-VALUE}).")
@@ -211,7 +211,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
             String contig = locusInfo.getContig();
             int position = locusInfo.getPosition();
-            byte[] referenceBases = referenceSequence.getSubsequenceAt(contig, position, position).getBases();
+            String referenceBase = referenceSequence.getSubsequenceAt(contig, position, position).getBaseString();
 
             Pileup<RecordAndOffset> pileup = new Pileup<>(locusInfo.getRecordAndOffsets());
 
@@ -222,7 +222,7 @@ public class CalculateSnvMetrics extends CommandLineProgram {
 
                 VariantContext snv = snvIterator.next();
 
-                if (!snv.getReference().basesMatch(referenceBases)) {
+                if (!referenceBase.equalsIgnoreCase(snv.getReference().getBaseString())) {
                     logger.error("Mismatching reference base for " + getSnvId(snv));
                     return 1;
                 }
