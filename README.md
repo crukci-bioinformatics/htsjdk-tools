@@ -160,61 +160,61 @@ challenge (https://www.synapse.org/#!Synapse:syn312572).
 MuTect2 filters (more stringent for higher precision):
 
     gatk VariantFiltration \
-    	--variant snv.metrics.vcf \
-    	--output snv.filtered.vcf \
-	    --filter-name VariantAlleleCount \
-    	--filter-expression "VariantAlleleCount < 4" \
-	    --filter-name VariantAlleleCountControl \
-	    --filter-expression "VariantAlleleCountControl > 1" \
-    	--filter-name VariantMapQualMedian \
-    	--filter-expression "VariantMapQualMedian < 40.0" \
-    	--filter-name MapQualDiffMedian \
-    	--filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
-    	--filter-name LowMapQual \
-    	--filter-expression "LowMapQual > 0.05" \
-    	--filter-name VariantBaseQualMedian \
-    	--filter-expression "VariantBaseQualMedian < 30.0" \
-    	--filter-name StrandBias \
-    	--filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
+      --variant snv.metrics.vcf \
+      --output snv.filtered.vcf \
+      --filter-name VariantAlleleCount \
+      --filter-expression "VariantAlleleCount < 4" \
+      --filter-name VariantAlleleCountControl \
+      --filter-expression "VariantAlleleCountControl > 1" \
+      --filter-name VariantMapQualMedian \
+      --filter-expression "VariantMapQualMedian < 40.0" \
+      --filter-name MapQualDiffMedian \
+      --filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
+      --filter-name LowMapQual \
+      --filter-expression "LowMapQual > 0.05" \
+      --filter-name VariantBaseQualMedian \
+      --filter-expression "VariantBaseQualMedian < 30.0" \
+      --filter-name StrandBias \
+      --filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
 
 MuTect2 filters (less stringent for higher recall at expense of precision):
 
     gatk VariantFiltration \
-    	--variant snv.metrics.vcf \
-    	--output snv.filtered.vcf \
-        --filter-name VariantAlleleCount \
-        --filter-expression "VariantAlleleCount < 3" \
-        --filter-name VariantAlleleCountControl \
-        --filter-expression "VariantAlleleCountControl > 1" \
-        --filter-name VariantMapQualMedian \
-        --filter-expression "VariantMapQualMedian < 40.0" \
-        --filter-name MapQualDiffMedian \
-        --filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
-        --filter-name LowMapQual \
-        --filter-expression "LowMapQual > 0.05" \
-        --filter-name VariantBaseQualMedian \
-        --filter-expression "VariantBaseQualMedian < 25.0"
+      --variant snv.metrics.vcf \
+      --output snv.filtered.vcf \
+      --filter-name VariantAlleleCount \
+      --filter-expression "VariantAlleleCount < 3" \
+      --filter-name VariantAlleleCountControl \
+      --filter-expression "VariantAlleleCountControl > 1" \
+      --filter-name VariantMapQualMedian \
+      --filter-expression "VariantMapQualMedian < 40.0" \
+      --filter-name MapQualDiffMedian \
+      --filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
+      --filter-name LowMapQual \
+      --filter-expression "LowMapQual > 0.05" \
+      --filter-name VariantBaseQualMedian \
+      --filter-expression "VariantBaseQualMedian < 25.0"
 
 Strelka filters (includes position in read filter):
 
     gatk VariantFiltration \
-    	--variant snv.metrics.vcf \
-    	--output snv.filtered.vcf \
-	    --filter-name VariantAlleleCount \
-    	--filter-expression "VariantAlleleCount < 4" \
-	    --filter-name VariantAlleleCountControl \
-	    --filter-expression "VariantAlleleCountControl > 1" \
-    	--filter-name VariantMapQualMedian \
-    	--filter-expression "VariantMapQualMedian < 40.0" \
-    	--filter-name MapQualDiffMedian \
-    	--filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
-    	--filter-name LowMapQual \
-    	--filter-expression "LowMapQual > 0.05" \
-    	--filter-name VariantBaseQualMedian \
-    	--filter-expression "VariantBaseQualMedian < 30.0" \
-    	--filter-name StrandBias \
-    	--filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
-        --filter-name DistanceToAlignmentEndMedian \
-        --filter-expression "DistanceToAlignmentEndMedian < 10.0" \
-        --filter-name DistanceToAlignmentEndMAD \
-        --filter-expression "DistanceToAlignmentEndMAD < 3.0"
+      --variant snv.metrics.vcf \
+      --output snv.filtered.vcf \
+      --filter-name VariantAlleleCount \
+      --filter-expression "VariantAlleleCount < 4" \
+      --filter-name VariantAlleleCountControl \
+      --filter-expression "VariantAlleleCountControl > 1" \
+      --filter-name VariantMapQualMedian \
+      --filter-expression "VariantMapQualMedian < 40.0" \
+      --filter-name MapQualDiffMedian \
+      --filter-expression "MapQualDiffMedian < -5.0 || MapQualDiffMedian > 5.0" \
+      --filter-name LowMapQual \
+      --filter-expression "LowMapQual > 0.05" \
+      --filter-name VariantBaseQualMedian \
+      --filter-expression "VariantBaseQualMedian < 30.0" \
+      --filter-name StrandBias \
+      --filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
+      --filter-name DistanceToAlignmentEndMedian \
+      --filter-expression "DistanceToAlignmentEndMedian < 10.0" \
+      --filter-name DistanceToAlignmentEndMAD \
+      --filter-expression "DistanceToAlignmentEndMAD < 3.0"
