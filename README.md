@@ -213,7 +213,7 @@ Strelka filters (includes position in read filter):
       --filter-name VariantBaseQualMedian \
       --filter-expression "VariantBaseQualMedian < 30.0" \
       --filter-name StrandBias \
-      --filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2"
+      --filter-expression "VariantAlleleCount >= 7 && VariantStrandBias < 0.05 && ReferenceStrandBias >= 0.2" \
       --filter-name DistanceToAlignmentEndMedian \
       --filter-expression "DistanceToAlignmentEndMedian < 10.0" \
       --filter-name DistanceToAlignmentEndMAD \
