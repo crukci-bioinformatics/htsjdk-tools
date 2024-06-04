@@ -88,6 +88,9 @@ public class PileupCounts extends CommandLineProgram {
     @Option(names = "--output-N-counts", description = "Output counts for the number of N base calls.")
     private boolean outputNCounts = false;
 
+    @Option(names = "--output-non-reference-allele-fraction", description = "Output the non-reference allele fraction (--reference-sequence must also be specified).")
+    private boolean outputNonReferenceAlleleFraction = false;
+
     @Option(names = "--validation-stringency", description = "Validation stringency applied to the BAM file (default: ${DEFAULT-VALUE}).")
     private ValidationStringency validationStringency = ValidationStringency.LENIENT;
 
@@ -175,6 +178,7 @@ public class PileupCounts extends CommandLineProgram {
                 referenceBase = referenceFile
                         .getSubsequenceAt(locusInfo.getContig(), locusInfo.getPosition(), locusInfo.getPosition())
                         .getBaseString();
+                referenceBase = referenceBase.toUpperCase();
             }
 
             Pileup<RecordAndOffset> pileup = new Pileup<>(locusInfo.getRecordAndOffsets());
@@ -236,6 +240,10 @@ public class PileupCounts extends CommandLineProgram {
             writer.write("\t");
             writer.write("N count");
         }
+        if (referenceSequenceFile != null && outputNonReferenceAlleleFraction) {
+            writer.write("\t");
+            writer.write("Allele fraction");
+        }
         writer.write("\n");
     }
 
@@ -270,6 +278,13 @@ public class PileupCounts extends CommandLineProgram {
         for (int i = 0; i < n; i++) {
             writer.write("\t");
             writer.write(Integer.toString(baseCounts[i]));
+        }
+
+        if (referenceSequenceFile != null && outputNonReferenceAlleleFraction) {
+            int referenceBaseCount = pileup.getBaseCount((byte)referenceBase.toCharArray()[0]);
+            double allele_fraction = 1.0 - (double)referenceBaseCount / pileup.size();
+            writer.write("\t");
+            writer.write(String.format("%.3f", allele_fraction));
         }
 
         writer.write("\n");
