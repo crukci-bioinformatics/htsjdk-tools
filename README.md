@@ -17,7 +17,7 @@ _htsjdk-tools_ contains the following utilities:
 
 ### Pre-requisites
 
-_htsjdk-tools_ requires a Java runtime, e.g. Java SE 8 or above.
+_htsjdk-tools_ requires a Java runtime, e.g. Java SE 17 or above.
 
 ### Installing a pre-packaged release
 
@@ -27,10 +27,10 @@ Packaged releases of _htsjdk-tools_ can be downloaded from the
 Unpack the downloaded tarball to an installation directory, substituting
 the version number as appropriate.
 
-        tar zxf htsjdk-tools-1.0-distribution.tar.gz
+        tar zxf htsjdk-tools-1.1-distribution.tar.gz
 
 The command-line utilities are located in the _bin_ subdirectory
-(htsjdk-tools-1.0/bin).
+(htsjdk-tools-1.1/bin).
 
 ### Building from source
 
@@ -50,9 +50,9 @@ can be found [here](http://maven.apache.org).
 3. Unpack the _htsjdk-tools_ tarball to an installation directory, substituting
 the version number as appropriate
 
-        tar zxf target/htsjdk-tools-1.0-SNAPSHOT-distribution.tar.gz
+        tar zxf target/htsjdk-tools-1.2-SNAPSHOT-distribution.tar.gz
 
-This will create a directory named htsjdk-tools-1.0-SNAPSHOT which can be moved
+This will create a directory named htsjdk-tools-1.2-SNAPSHOT which can be moved
 to a preferred installation location.
 
 ## Running _htsjdk-tools_
