@@ -5,7 +5,7 @@
 
     <groupId>org.cruk.htsjdk</groupId>
     <artifactId>htsjdk-tools</artifactId>
-    <version>1.1</version>
+    <version>1.2-SNAPSHOT</version>
 
     <name>htsjdk-tools</name>
     <url>https://github.com/crukci-bioinformatics/htsjdk-tools</url>
