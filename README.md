@@ -17,7 +17,7 @@ _htsjdk-tools_ contains the following utilities:
 
 ### Pre-requisites
 
-_htsjdk-tools_ requires a Java runtime, e.g. Java SE 17 or above.
+_htsjdk-tools_ requires a Java runtime, e.g. Java SE 21 or above.
 
 ### Installing a pre-packaged release
 
